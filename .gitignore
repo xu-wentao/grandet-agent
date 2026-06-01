@@ -1,0 +1,19 @@
+# Binaries
+bin/
+*.exe
+*.out
+
+# Go
+*.test
+coverage.out
+
+# Local GrandetAgent workspace
+.grandet/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Env
+.env
