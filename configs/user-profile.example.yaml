@@ -1,0 +1,26 @@
+user:
+  id: local
+  profile_version: v1
+
+preferences:
+  cost_sensitivity: 0.92
+  quality_sensitivity: 0.58
+  latency_sensitivity: 0.30
+  default_acceptance_threshold: 0.62
+
+task_tolerance:
+  coding:
+    min_success_probability: 0.78
+    reject_rate_7d: 0.00
+    accept_rate_7d: 0.00
+    preferred_price_quantile: 0.20
+  summarization:
+    min_success_probability: 0.60
+    reject_rate_7d: 0.00
+    accept_rate_7d: 0.00
+    preferred_price_quantile: 0.05
+  extraction:
+    min_success_probability: 0.72
+    reject_rate_7d: 0.00
+    accept_rate_7d: 0.00
+    preferred_price_quantile: 0.10
