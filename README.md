@@ -85,4 +85,4 @@ go run ./cmd/grandet init --dry-run
 
 ## License
 
-MIT
+Apache-2.0
