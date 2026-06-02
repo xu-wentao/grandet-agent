@@ -5,6 +5,12 @@ providers:
     api_key_env: OPENROUTER_API_KEY
     enabled: true
 
+  litellm:
+    type: openai_compatible
+    base_url: http://localhost:4000/v1
+    api_key_env: LITELLM_API_KEY
+    enabled: false
+
   openai:
     type: openai_compatible
     base_url: https://api.openai.com/v1
