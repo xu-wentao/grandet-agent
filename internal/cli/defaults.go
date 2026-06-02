@@ -4,13 +4,20 @@ const defaultConfigYAML = `version: v1
 
 strategy:
   name: stingy
-  objective: minimize_cost_under_success_probability
+  objective: minimize_cost_per_accepted_task
   cost_first: true
-  allow_fallback: true
-  max_fallback_depth: 3
+  allow_quality_escalation: true
+  allow_reliability_fallback: true
+  max_quality_escalation_depth: 3
+  max_reliability_fallback_depth: 2
   max_retry_per_model: 1
   default_quality_floor: low_medium
   learn_from_feedback: true
+
+baseline:
+  enabled: true
+  model: openai/gpt-5.5
+  note: Used for savings analysis only. It is not called unless explicitly requested.
 
 runtime:
   database: ~/.grandet/grandet.db
@@ -29,9 +36,29 @@ budget:
   task_default_limit_usd: 0.05
   shadow_eval_daily_limit_usd: 0.20
 
+cost_accounting:
+  track_raw_call_cost: true
+  track_task_total_cost: true
+  track_accepted_task_cost: true
+  track_wasted_cost: true
+  track_fallback_tax: true
+
+free_models:
+  allow_for_real_tasks: true
+  require_smoke_test: true
+  require_task_bucket_profile: true
+  max_consecutive_failures: 3
+  auto_degrade_on_rate_limit: true
+
 feedback:
   ask_after_run: false
   default_if_skipped: neutral
+
+shadow_eval:
+  enabled: false
+  max_daily_budget_usd: 0.20
+  prefer_free_models: true
+  redact_before_eval: true
 `
 
 const defaultProvidersYAML = `providers:
@@ -40,6 +67,12 @@ const defaultProvidersYAML = `providers:
     base_url: https://openrouter.ai/api/v1
     api_key_env: OPENROUTER_API_KEY
     enabled: true
+
+  litellm:
+    type: openai_compatible
+    base_url: http://localhost:4000/v1
+    api_key_env: LITELLM_API_KEY
+    enabled: false
 
   openai:
     type: openai_compatible
@@ -65,6 +98,7 @@ const defaultModelsYAML = `models:
     name: qwen3-coder-free
     enabled: true
     is_free: true
+    free_state: FREE_DISCOVERED
     capabilities:
       - coding_simple
       - coding_medium
@@ -106,17 +140,17 @@ preferences:
   default_acceptance_threshold: 0.62
 
 task_tolerance:
-  coding:
+  coding_simple_patch:
     min_success_probability: 0.78
     reject_rate_7d: 0.00
     accept_rate_7d: 0.00
     preferred_price_quantile: 0.20
-  summarization:
+  summarization_short:
     min_success_probability: 0.60
     reject_rate_7d: 0.00
     accept_rate_7d: 0.00
     preferred_price_quantile: 0.05
-  extraction:
+  extraction_json:
     min_success_probability: 0.72
     reject_rate_7d: 0.00
     accept_rate_7d: 0.00
