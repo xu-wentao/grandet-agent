@@ -1,229 +1,299 @@
 # GrandetAgent Design Decisions
 
-This document records key product and architecture decisions for GrandetAgent.
+This document records the current architectural decisions and the reasons behind them.
 
-## Decision 1: GrandetAgent is not a general Agent orchestrator
+## Decision 1: The economic unit is a trajectory
 
-GrandetAgent should not compete directly with LangGraph, LlamaIndex, Haystack, Dify, Semantic Kernel, or similar workflow frameworks.
+GrandetAgent does not optimize isolated model calls.
 
-GrandetAgent focuses on:
-
-```text
-local model routing + cost accounting + eval + user tolerance learning
-```
-
-Deferred:
-
-- visual workflow builder
-- complex multi-agent DAG editor
-- enterprise orchestration platform
-- generic low-code agent platform
-
-## Decision 2: GrandetAgent is not a full AI Gateway replacement
-
-GrandetAgent can use LiteLLM, OpenRouter, Portkey-like gateways, or any OpenAI-compatible endpoint, but it should not duplicate all gateway control-plane features in the first version.
-
-GrandetAgent should add value above gateways:
-
-- local task bucket classification
-- local cost-per-accepted-task analysis
-- local user feedback learning
-- local shadow evaluation
-- local routing recommendations
-
-## Decision 3: Optimize cost per accepted task
-
-Raw model call cost is not enough.
-
-Primary metric:
+Primary metrics:
 
 ```text
-cost_per_accepted_task
+cost_per_successful_trajectory
+cost_per_accepted_trajectory
 ```
 
-This includes:
+A trajectory includes routing, context preparation, model calls, tools, validation, repair, retry, escalation, fallback, and rejected work.
 
-- initial model call
-- retries
-- repairs
-- judges
-- quality escalation
-- reliability fallback
-- rejected output waste
+**Tradeoff:** accounting becomes more complex, but it prevents cheap calls with expensive failure paths from appearing efficient.
 
-A cheap model with high failure or reject rate may have high effective cost.
+## Decision 2: Price is first, success is a constraint
 
-## Decision 4: Split fallback into two types
-
-GrandetAgent must distinguish quality and reliability.
-
-### Quality escalation
-
-The model was available, but the output was not good enough.
-
-Examples:
-
-- schema failure
-- wrong answer
-- user reject
-- judge failure
-- no_answer result
-
-### Reliability fallback
-
-The model or provider could not complete the request.
-
-Examples:
-
-- timeout
-- rate limit
-- provider error
-- model unavailable
-- context window error
-
-The two signals should update model profiles differently.
-
-## Decision 5: Use task buckets instead of only task types
-
-Broad task types are too coarse.
-
-Use `task_bucket` for routing and model profiles.
-
-Initial buckets:
+The default policy is always stingy:
 
 ```text
-chat_simple
-classification
-extraction_json
-summarization_short
-summarization_long
-document_qa
-coding_explain
-coding_simple_patch
-coding_complex_design
-k8s_troubleshooting
-log_analysis
+minimize expected trajectory cost
+subject to success, safety, latency, and budget constraints
 ```
 
-All runtime stats should be aggregated by model and task bucket.
+GrandetAgent does not expose several equal first-class modes such as balanced, premium, or quality-first in the initial design.
 
-## Decision 6: Start with rule-based routing
+**Tradeoff:** the product is less generic, but its behavior and value proposition stay clear.
 
-Do not implement a learned router in the first version.
+## Decision 3: Route execution profiles, not model names
 
-Routing should start with transparent rules:
+A routing candidate is:
 
-- task bucket
-- context size
-- required capabilities
-- budget
-- model status
-- provider status
-- historical accept rate
-- fallback tax
-- user tolerance floor
+```text
+provider + model + reasoning mode + token limits + tool mode + retry policy
+```
 
-Later versions can add classifier-based routing or learned routing.
+The same model can have cheap and expensive execution profiles.
 
-## Decision 7: Guardrail before escalation
+**Reason:** turning reasoning off or reducing output limits may save more money and preserve continuity better than switching model families.
 
-Before escalating to a more expensive model, try deterministic validation and cheap repair.
+## Decision 4: Use task family and difficulty as separate axes
 
-Examples:
+Profiles are not aggregated only by broad buckets such as `coding`.
 
-- JSON parser and JSON Schema
-- YAML parser
-- formatter / compiler / lint / tests
-- tool argument schema validation
-- static risk checks for shell commands
+Primary classification:
 
-Model escalation should be used after cheap validation and repair options are exhausted or unsafe.
+```text
+task_family × difficulty
+```
 
-## Decision 8: Support no_answer as a valid output
+Additional dimensions include domain, risk, seriousness, context size, tools, and verification mode.
 
-Cheap models should be allowed to say they do not have enough context.
+**Tradeoff:** more dimensions require more samples, so the system must back off to coarser profiles when evidence is sparse.
 
-Protocol:
+## Decision 5: Start with task-level routing and session affinity
+
+The initial implementation routes at task boundaries and preserves model affinity inside a session.
+
+SubAgent and step-level routing are deferred.
+
+**Reason:** very fine-grained switching can destroy cache value, replay context, and create more routing overhead than savings.
+
+## Decision 6: Cache and context replay are economic inputs
+
+Even when exact provider KV-cache state is unavailable, GrandetAgent estimates:
+
+```text
+context_replay_tokens
+model_switch_penalty
+estimated_cache_eviction_cost
+```
+
+A cheaper candidate is rejected when switching cost exceeds expected savings.
+
+**Tradeoff:** estimates may be imperfect, but ignoring these costs is systematically worse.
+
+## Decision 7: Routing must have its own budget
+
+Every analyzer and classifier records latency and cost.
+
+Default goals:
+
+```text
+rules and hard constraints: near zero cost
+local semantic classifier: bounded local latency
+LLM classifier: disabled unless expected value is positive
+```
+
+The policy may enforce:
+
+```text
+routing_overhead_ratio <= configured threshold
+```
+
+**Reason:** a router that costs more than it saves violates the project philosophy.
+
+## Decision 8: Use layered classification
+
+Classification order:
+
+```text
+L0 hard constraints
+L1 local rules
+L2 local embedding or lightweight classifier
+L3 optional cheap LLM classifier
+```
+
+Each later layer is entered only when earlier layers are insufficient and potential savings justify the added cost.
+
+## Decision 9: Deterministic validation precedes model escalation
+
+GrandetAgent uses parsers, schemas, formatters, compilers, linters, tests, and tool-argument validation before paying for another model.
+
+**Tradeoff:** validators require task-specific integrations, but they are cheaper and more trustworthy than universal LLM judging.
+
+## Decision 10: `no_answer` is a valid result
+
+A model may return structured insufficient-context information instead of hallucinating.
 
 ```json
 {
   "status": "no_answer",
-  "answer": null,
   "reason": "insufficient_context",
-  "needs": ["more_files", "web_search", "stronger_reasoning_model"]
+  "needs": ["more_files"]
 }
 ```
 
-This prevents hallucination and gives the router a structured escalation signal.
+The system may expand context before escalating model quality.
 
-## Decision 9: Public benchmarks are cold-start hints
+## Decision 11: Quality escalation and reliability fallback are different
 
-Signal priority:
+### Quality escalation
+
+The provider completed the call, but the result did not satisfy quality requirements.
+
+### Reliability fallback
+
+The provider or model failed technically.
+
+### Budget fallback
+
+The route cannot continue within the remaining budget.
+
+These events update separate statistics.
+
+**Reason:** a timeout should not lower model quality reputation, and a wrong answer should not lower provider reliability reputation.
+
+## Decision 12: User feedback is task-specific
+
+User tolerance is learned by task family, difficulty, and domain rather than as one global quality preference.
+
+A user may accept cheap summaries but reject cheap architecture advice.
+
+**Tradeoff:** learning is slower, but resulting behavior is more faithful.
+
+## Decision 13: Explicit feedback is stronger than implicit feedback
+
+Evidence weights are ordered approximately as:
 
 ```text
-user feedback > local runtime performance > local shadow eval > local eval suite > public benchmark > provider model card
+explicit accept or reject
+manual replay or model override
+similar re-ask
+large manual edit
+abandonment
 ```
 
-Public benchmark data should initialize profiles, not dominate production routing.
+Implicit signals remain weak because their intent is ambiguous.
 
-## Decision 10: Shadow evaluation is core, but manual first
+## Decision 14: Learning is conservative and versioned
 
-The first version should not require a daemon.
+Feedback updates evidence windows and may produce a new policy draft.
 
-Shadow evaluation should be triggered by CLI:
+It never mutates the active policy invisibly.
 
-```bash
-grandet eval shadow --sample 20
-grandet eval shadow --task-bucket summarization_short --models free,cheap
-```
-
-It should produce routing recommendations, not silently mutate behavior without trace.
-
-## Decision 11: Free models require governance
-
-Free models are not automatically trusted.
-
-Lifecycle:
+Policy lifecycle:
 
 ```text
-FREE_DISCOVERED
-  -> FREE_SMOKE_TESTED
-  -> FREE_CANDIDATE
-  -> FREE_STABLE
-  -> FREE_DEGRADED
-  -> FREE_DISABLED
+DRAFT -> VALIDATED -> ACTIVE -> DEGRADED -> FROZEN -> ROLLED_BACK
 ```
 
-Eligibility for real tasks should depend on health checks, smoke tests, rate-limit history, and task-bucket profile.
+**Tradeoff:** adaptation is slower, but every behavioral change is inspectable and reversible.
 
-## Decision 12: Baseline savings must be explicit
+## Decision 15: Public benchmarks are cold-start priors
 
-GrandetAgent should support a configured baseline model to estimate savings.
+Evidence priority:
 
-Example:
-
-```yaml
-baseline:
-  enabled: true
-  model: openai/gpt-5.5
+```text
+user feedback
+  > validated local outcomes
+  > implicit behavior
+  > shadow replay
+  > Golden Set
+  > public benchmark
+  > provider metadata
 ```
 
-Savings analysis must clearly state whether baseline cost is estimated or measured.
+A high public score cannot override repeated local failures.
 
-## Decision 13: Context optimization is part of cost control
+## Decision 16: Golden Set cases contain acceptance criteria
 
-Reducing tokens is often cheaper than switching models.
+A Golden Set case is not only a prompt and reference answer.
 
-First version context optimization:
+It includes:
 
-- token estimation
-- duplicate trimming
-- history trimming
-- file context size warnings
+```text
+task family
+difficulty
+acceptance criteria
+validators
+safety requirements
+```
 
-Later:
+**Reason:** Agent tasks are often better judged by required behavior and tool correctness than by text similarity.
 
-- chunking
-- retrieval
-- rerank
-- compression
+## Decision 17: Shadow replay is manual first
+
+The initial CLI supports explicit replay and comparison commands.
+
+It does not require a background daemon.
+
+Every stored decision preserves:
+
+```text
+state -> candidates -> policy -> action -> outcome -> evaluation
+```
+
+This supports later policy comparison and learned routing.
+
+## Decision 18: LLM judges are offline-biased
+
+Main-path evaluation prefers deterministic validators and at most a cheap judge when necessary.
+
+Golden Set and shadow evaluation may use stronger pairwise judges, answer-order swapping, cross-family judges, and human calibration.
+
+**Reason:** using multiple expensive judges on every live task would destroy savings.
+
+## Decision 19: Free models require admission and lifecycle management
+
+Free models move through:
+
+```text
+DISCOVERED
+SMOKE_TESTED
+CANDIDATE
+STABLE
+DEGRADED
+QUARANTINED
+DISABLED
+```
+
+They are eligible for real tasks only when provider health and task-specific evidence are sufficient.
+
+## Decision 20: The active policy has a kill switch
+
+Triggers may include:
+
+- safety violation
+- Golden Set regression
+- abnormal re-ask rate
+- routing overhead regression
+- cost-per-accepted-trajectory regression
+- provider instability
+
+The response is to freeze learning and restore the last stable stingy policy, not to route everything to the most expensive model.
+
+## Decision 21: GrandetAgent is not a general Agent framework
+
+It does not compete with workflow frameworks on graph authoring or low-code orchestration.
+
+Its differentiated responsibility is:
+
+```text
+local trajectory economics + model execution routing + evaluation + user-specific learning
+```
+
+## Decision 22: GrandetAgent is not a full gateway replacement
+
+It may use OpenRouter, LiteLLM, OpenAI-compatible APIs, and local runtimes.
+
+It avoids duplicating enterprise gateway control-plane features in the first version.
+
+## Decision 23: CLI and SQLite remain the first implementation form
+
+The first version stays local and inspectable.
+
+Deferred:
+
+- hosted server mode
+- multi-tenancy
+- distributed execution
+- online canary infrastructure
+- visual dashboard
+- Kubernetes deployment
+- reinforcement learning policy control
