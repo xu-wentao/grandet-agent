@@ -1,716 +1,800 @@
 # GrandetAgent Architecture
 
-GrandetAgent is a local-first, cost-aware Agent CLI.
+## 1. Project Definition
 
-Its purpose is not to become a large workflow orchestration platform or a generic AI gateway. It focuses on one narrow problem:
+GrandetAgent is a local-first, cost-optimizing Agent CLI.
+
+It does not try to become a general workflow platform or a full AI gateway. Its responsibility is narrower:
+
+> For each Agent trajectory, choose and coordinate the cheapest execution profiles that are still likely to produce an acceptable result for the current user.
+
+The routing target is not only a model name. It is a complete **Model Execution Profile**:
 
 ```text
-Learn which cheapest model is good enough for each local task bucket.
+provider + model + reasoning mode + token limits + tool capability + cache state + retry policy
 ```
 
-## Positioning
+GrandetAgent runs locally, stores all decisions and feedback locally, and exposes its behavior through CLI commands and versioned YAML policies.
 
-GrandetAgent runs locally as a CLI tool. It stores configuration, model profiles, traces, task records, evaluation results, and user feedback under `~/.grandet/`.
+## 2. Design Philosophy
 
-The first version does not require:
+### 2.1 Stinginess is rational optimization, not cheapest-call obsession
 
-- web dashboard
-- server gateway
-- multi-tenant control plane
+The cheapest individual call is not necessarily the cheapest successful task.
+
+A cheap model may create hidden cost through:
+
+- invalid output
+- retries
+- tool failures
+- context replay
+- judge calls
+- quality escalation
+- user rejection and re-execution
+
+GrandetAgent therefore optimizes:
+
+```text
+cost_per_successful_trajectory
+cost_per_accepted_trajectory
+```
+
+rather than only:
+
+```text
+input_price_per_token
+output_price_per_token
+```
+
+### 2.2 Price is first, success is a constraint
+
+The strategy is not a configurable collection of personalities such as `balanced`, `fast`, and `quality`.
+
+GrandetAgent has one philosophy:
+
+```text
+minimize trajectory cost
+subject to acceptable success probability and explicit safety constraints
+```
+
+The acceptable threshold is user-specific and task-specific. It is learned conservatively from explicit and implicit feedback.
+
+### 2.3 Spend intelligence only when its expected value is positive
+
+Routing itself has a cost.
+
+A router that invokes another expensive LLM for every request may spend more than it saves. Every routing stage therefore has a budget:
+
+```text
+expected_routing_value
+  = expected_saving
+  - routing_cost
+  - expected_misroute_cost
+```
+
+A more expensive classifier is used only when `expected_routing_value > 0`.
+
+### 2.4 Deterministic before probabilistic
+
+Before paying for a stronger model, GrandetAgent should attempt cheaper deterministic work:
+
+- parse JSON or YAML
+- validate a schema
+- run a formatter
+- compile or lint code
+- validate tool arguments
+- detect missing context
+
+A model upgrade is justified only after cheap validation and repair paths are exhausted or unsafe.
+
+### 2.5 Local evidence defeats generic benchmark prestige
+
+Public benchmarks are useful for cold start, but they cannot represent the user's real tasks, provider reliability, tool behavior, context shape, or tolerance.
+
+Evidence priority:
+
+```text
+explicit user feedback
+  > validated local trajectory outcome
+  > implicit user behavior
+  > local shadow replay
+  > local Golden Set
+  > public benchmark
+  > provider marketing metadata
+```
+
+### 2.6 Continuity is an economic asset
+
+Switching models inside a long session may destroy provider-side cache value and require large context replay.
+
+GrandetAgent therefore treats session affinity, warm prefixes, reasoning continuity, and context replay as economic inputs rather than incidental implementation details.
+
+### 2.7 Learning must be reversible
+
+User feedback may be noisy and task distributions may drift. GrandetAgent never silently mutates an opaque global policy.
+
+All learned changes produce a versioned policy candidate that can be:
+
+```text
+validated -> activated -> degraded -> frozen -> rolled back
+```
+
+## 3. Product Boundary
+
+GrandetAgent owns:
+
+- local provider and model configuration
+- model discovery and profiling
+- task-family and difficulty classification
+- execution-profile selection
+- session affinity and switch penalties
+- trajectory execution and cost accounting
+- deterministic validation
+- quality escalation and reliability fallback
+- user feedback learning
+- Golden Set and shadow replay
+- policy generation, validation, activation, and rollback
+- CLI analysis and trace output
+
+GrandetAgent does not initially own:
+
+- visual workflow design
+- enterprise multi-tenancy
+- centralized gateway control plane
+- hosted observability platform
 - Kubernetes deployment
-- long-running daemon
-- complex visual workflow builder
+- distributed worker scheduling
+- online traffic canary and A/B infrastructure
 
-GrandetAgent can integrate with existing gateways and providers, but it should not duplicate all of them.
-
-Recommended relationship:
+It can use existing infrastructure beneath it:
 
 ```text
-Agent / User CLI
-  -> GrandetAgent local router, cost accounting, eval, feedback learning
-    -> OpenRouter / LiteLLM / OpenAI-compatible provider / local model runtime
+GrandetAgent
+  -> OpenRouter
+  -> LiteLLM
+  -> OpenAI-compatible APIs
+  -> local Ollama / vLLM runtimes
 ```
 
-## Primary Goal
+## 4. Fundamental Domain Model
 
-The primary metric is not the cheapest single model call.
+### 4.1 Session
 
-The primary metric is:
+A user-visible conversation or work context.
+
+The session owns:
+
+- model affinity
+- reusable context prefix
+- accumulated context size
+- recent task families
+- current policy version
+- estimated cache state
+
+### 4.2 Trajectory
+
+The complete economic and quality unit.
+
+A trajectory begins when the user submits a goal and ends when one of the following occurs:
 
 ```text
-cost_per_accepted_task
+accepted
+validated_success
+rejected
+abandoned
+budget_exhausted
+fatal_failure
 ```
 
-Definition:
+A trajectory may contain several tasks, steps, model calls, tool calls, retries, repairs, and escalations.
 
-```text
-cost_per_accepted_task = total_task_cost / accepted_task_count
-```
+### 4.3 Task
 
-GrandetAgent optimizes for the average cost of tasks that the user actually accepts. This avoids fake savings where a cheap model has low per-call cost but causes many retries, fallbacks, and rejected outputs.
+A semantically coherent objective inside a trajectory.
 
-## Default Strategy
+Examples:
 
-GrandetAgent has one default strategy:
+- inspect repository structure
+- diagnose a Kubernetes error
+- produce a patch
+- summarize a document
+- validate generated JSON
 
-```text
-stingy: price first, but optimize for accepted task cost, not raw token price
-```
+### 4.4 Step
 
-The strategy is dynamic and local. It changes based on:
+A single executable action inside a task.
 
-- task bucket
-- model runtime profile
-- deterministic validation result
-- fallback history
-- user accept / reject / rate feedback
-- local shadow evaluation
-- budget constraints
+A step may be:
 
-## Core Principles
+- deterministic local operation
+- model call
+- tool call
+- validator
+- repair operation
+- judge operation
 
-1. Price is the first priority.
-2. The effective cost is measured per accepted task, not per isolated call.
-3. Free models are preferred but must be profiled, tested, and monitored.
-4. Cheap models are tried before expensive models when they satisfy the current task bucket tolerance.
-5. Quality escalation and reliability fallback are separate concepts.
-6. Deterministic guardrails should run before expensive model escalation.
-7. User feedback overrides public benchmarks over time.
-8. Every routing decision must be traceable and explainable.
-9. Public benchmarks are cold-start hints, not production truth.
-10. Shadow evaluation is used to find cheaper substitutes without disrupting the main result.
+### 4.5 Model Execution Profile
 
-## Reference Market Layering
-
-GrandetAgent is designed around the current market split:
-
-```text
-Orchestration layer
-  LangGraph / LlamaIndex / Haystack / Dify / Semantic Kernel
-
-Gateway and routing layer
-  LiteLLM / Portkey / OpenRouter / Vercel AI Gateway / RouteLLM
-
-Eval and observability layer
-  LangSmith / custom eval suites / production traces
-```
-
-GrandetAgent intentionally targets a local-first intersection:
-
-```text
-local task router + local cost accounting + local eval + user tolerance learning
-```
-
-It may call LiteLLM, OpenRouter, or any OpenAI-compatible endpoint, but its own differentiated value is the local decision loop.
-
-## Local Directory
-
-```text
-~/.grandet/
-  config.yaml
-  models.yaml
-  providers.yaml
-  user-profile.yaml
-  grandet.db
-  logs/
-  traces/
-  evals/
-  cache/
-```
-
-## High-level Flow
-
-```text
-User command
-  -> CLI command handler
-  -> Config loader
-  -> Local storage
-  -> Context optimizer
-  -> Task analyzer
-  -> Task bucket classifier
-  -> Stingy strategy engine
-  -> Model router
-  -> RunnerAgent
-  -> Guardrail verifier
-  -> Quality escalation if needed
-  -> Reliability fallback if needed
-  -> Final output
-  -> Trace and cost record
-  -> User feedback update
-  -> Model and task-bucket profile update
-```
-
-## Main Components
-
-### Config Loader
-
-Loads and merges:
-
-```text
-CLI flags > environment variables > user config files > defaults
-```
-
-Configuration files:
-
-- `config.yaml`
-- `providers.yaml`
-- `models.yaml`
-- `user-profile.yaml`
-
-Recommended baseline config:
+The actual unit selected by the router.
 
 ```yaml
-baseline:
-  enabled: true
-  model: openai/gpt-5.5
+id: openrouter-qwen-fast
+provider: openrouter
+model: qwen/example
+reasoning:
+  mode: disabled
+max_output_tokens: 1200
+temperature: 0.2
+tool_calling: true
+context_window: 131072
+price_profile: standard
 ```
 
-The baseline model is not used by default. It is used for savings analysis.
-
-### Local Storage
-
-The first version uses SQLite.
-
-It stores:
-
-- models
-- model task profiles
-- task bucket profiles
-- tasks
-- model call spans
-- routing decisions
-- fallback events
-- user feedback events
-- shadow evaluation runs
-- baseline cost estimates
-
-### Provider Layer
-
-The provider layer normalizes different LLM APIs.
-
-Initial support:
-
-- OpenAI-compatible APIs
-- OpenRouter
-- LiteLLM proxy as an OpenAI-compatible provider
-- local Ollama later
-- local vLLM later
-
-Example provider config:
-
-```yaml
-providers:
-  litellm:
-    type: openai_compatible
-    base_url: http://localhost:4000/v1
-    api_key_env: LITELLM_API_KEY
-    enabled: false
-```
-
-Provider interface draft:
-
-```go
-type Provider interface {
-    ListModels(ctx context.Context) ([]Model, error)
-    Chat(ctx context.Context, req ChatRequest) (*ChatResponse, error)
-    EstimateTokens(req ChatRequest) (TokenEstimate, error)
-    HealthCheck(ctx context.Context) error
-}
-```
-
-### Model Registry
-
-The model registry maintains both static model information and runtime profiles.
-
-Model states:
+The same model may have several profiles:
 
 ```text
-DISCOVERED -> PROFILING -> ACTIVE -> DEGRADED -> DISABLED -> REMOVED
+model/no-thinking
+model/low-reasoning
+model/high-reasoning
+model/short-output
+model/tool-enabled
 ```
 
-Free model states:
+This allows GrandetAgent to save money without switching model families unnecessarily.
+
+### 4.6 Routing Policy
+
+A versioned set of signals, constraints, ranking rules, escalation rules, and red lines.
+
+A policy never directly contains user secrets. It references registered providers and profiles.
+
+## 5. Task Taxonomy
+
+Routing quality is modeled on two primary axes.
+
+### 5.1 Task family
+
+Initial families:
 
 ```text
-FREE_DISCOVERED
-  -> FREE_SMOKE_TESTED
-  -> FREE_CANDIDATE
-  -> FREE_STABLE
-  -> FREE_DEGRADED
-  -> FREE_DISABLED
-```
-
-A free model should not enter important real tasks only because its listed price is zero. It must pass health checks and task-bucket-specific smoke tests.
-
-### Task Analyzer
-
-The task analyzer estimates:
-
-- task type
-- task bucket
-- difficulty
-- context size
-- expected input tokens
-- expected output tokens
-- required model capabilities
-- verification mode
-- reject risk
-- current user tolerance floor
-
-It must be cheap itself:
-
-```text
-rules -> local model -> free model -> cheapest paid model
-```
-
-### Task Bucket Classifier
-
-GrandetAgent should aggregate runtime quality and cost by `task_bucket`, not only by broad task type.
-
-Initial task buckets:
-
-```text
-chat_simple
+general_qa
 classification
-extraction_json
-summarization_short
-summarization_long
-document_qa
-coding_explain
-coding_simple_patch
-coding_complex_design
-k8s_troubleshooting
-log_analysis
+extraction
+documentation
+summarization
+code_generation
+code_review
+debugging
+architecture_design
+test_generation
+error_recovery
+data_analysis
+tool_use_planning
+kubernetes_troubleshooting
 ```
 
-Task profile draft:
+### 5.2 Difficulty
+
+```text
+1 trivial
+2 simple
+3 moderate
+4 complex
+5 expert
+```
+
+### 5.3 Additional dimensions
+
+```text
+domain
+risk_level
+seriousness
+context_size
+required_tools
+required_modalities
+verification_mode
+latency_requirement
+```
+
+Example:
 
 ```json
 {
-  "task_type": "coding",
-  "task_bucket": "coding_simple_patch",
-  "difficulty": "medium",
-  "context_size": "medium",
-  "requires_tool_calling": false,
-  "requires_json_schema": false,
-  "requires_long_context": false,
-  "knowledge_mode": "provided_context",
-  "verification_mode": "compile_or_static_check",
-  "risk_level": "medium"
+  "task_family": "debugging",
+  "difficulty": 3,
+  "domain": "kubernetes",
+  "risk_level": "medium",
+  "seriousness": "production",
+  "context_size": "large",
+  "required_tools": ["file_read", "shell"],
+  "verification_mode": "command_and_log_check"
 }
 ```
 
-### Context Optimizer
-
-The context optimizer reduces token waste before routing.
-
-First version scope:
-
-- estimate context tokens
-- remove duplicate context blocks
-- trim irrelevant history
-- support explicit `--context` files
-- warn when context exceeds model budget
-
-Later scope:
-
-- file chunking
-- embedding retrieval
-- rerank
-- context packing
-- prompt compression
-
-Candidate commands:
-
-```bash
-grandet context estimate --file big.md
-grandet context pack --context ./repo --query "fix node taint bug"
-```
-
-### Stingy Strategy Engine
-
-Objective:
+Runtime profiles are aggregated primarily by:
 
 ```text
-minimize(cost_per_accepted_task)
+user + execution_profile + task_family + difficulty + domain
+```
+
+## 6. System Architecture
+
+```text
+CLI / Application Layer
+  |
+  v
+Trajectory Service
+  |
+  +--> Session Manager
+  +--> Context Planner
+  +--> Task Analyzer
+  +--> Candidate Builder
+  +--> Policy Engine
+  +--> Execution Coordinator
+  +--> Validation Coordinator
+  +--> Escalation Manager
+  +--> Cost Ledger
+  +--> Feedback Service
+  +--> Evaluation Service
+  |
+  v
+Domain Stores
+  +--> Model Registry
+  +--> Profile Store
+  +--> Policy Store
+  +--> Trajectory Store
+  +--> Evaluation Store
+  |
+  v
+Infrastructure Adapters
+  +--> Provider adapters
+  +--> Tokenizers
+  +--> SQLite
+  +--> File system
+  +--> Deterministic validators
+  +--> Local embedding/classifier runtime
+```
+
+## 7. Core Components
+
+### 7.1 CLI Layer
+
+The CLI is the first-version user interface.
+
+It parses commands, renders output, and invokes application services. It must not contain routing or learning rules.
+
+### 7.2 Session Manager
+
+Responsibilities:
+
+- create and resume sessions
+- track the active execution profile
+- estimate cache warmth and prefix reuse
+- calculate model-switch penalties
+- preserve session policy version
+
+Session affinity is a preference, not an absolute lock. A switch is allowed when:
+
+```text
+expected_gain > switch_penalty + context_replay_cost + risk_margin
+```
+
+### 7.3 Context Planner
+
+Responsibilities:
+
+- count and estimate tokens
+- remove duplicate content
+- identify reusable prefixes
+- select relevant files or chunks
+- estimate context replay cost
+- determine whether the selected profile can accept the context
+
+The first version may use deterministic trimming. Retrieval and reranking are later extensions.
+
+### 7.4 Task Analyzer
+
+The analyzer produces the normalized task profile.
+
+It operates in stages:
+
+```text
+L0 hard constraints
+  context length, tool requirement, modality, schema requirement
+
+L1 local rules
+  command flags, keywords, file types, known task templates
+
+L2 local semantic classifier
+  embedding similarity or lightweight classifier
+
+L3 optional cheap LLM classifier
+  only when ambiguity and expected savings justify its cost
+```
+
+The analyzer must record its own latency and cost.
+
+### 7.5 Model Registry
+
+The registry stores:
+
+- provider metadata
+- model metadata
+- execution profiles
+- prices
+- context limits
+- capabilities
+- health and rate-limit history
+- public benchmark seeds
+- local runtime profiles
+
+Free models use an explicit lifecycle:
+
+```text
+DISCOVERED
+  -> SMOKE_TESTED
+  -> CANDIDATE
+  -> STABLE
+  -> DEGRADED
+  -> QUARANTINED
+  -> DISABLED
+```
+
+### 7.6 Candidate Builder
+
+The builder produces viable execution profiles.
+
+Hard filters include:
+
+- enabled provider
+- healthy endpoint
+- required context capacity
+- required tools and modalities
+- safety and domain restrictions
+- task and daily budget
+- free-model eligibility
+
+It also creates two different recovery lists:
+
+```text
+quality escalation chain
+reliability fallback chain
+```
+
+### 7.7 Cost Estimator and Ledger
+
+The estimator predicts candidate cost before execution. The ledger records actual cost after execution.
+
+Cost categories:
+
+```text
+routing_cost
+input_cost
+output_cost
+thinking_cost
+cache_write_cost
+context_replay_cost
+tool_cost
+validation_cost
+repair_cost
+judge_cost
+retry_cost
+quality_escalation_cost
+reliability_fallback_cost
+rejected_work_cost
+```
+
+Primary metrics:
+
+```text
+trajectory_total_cost
+cost_per_successful_trajectory
+cost_per_accepted_trajectory
+fallback_tax
+context_replay_tax
+routing_overhead_ratio
+wasted_cost_ratio
+```
+
+### 7.8 Policy Engine
+
+The policy engine evaluates candidates using constraints first and ranking second.
+
+Optimization objective:
+
+```text
+minimize expected_trajectory_cost
 subject to:
-  success_probability >= user_task_bucket_tolerance_floor
-  model_available == true
-  expected_cost <= configured_budget
+  expected_success_probability >= user_tolerance_floor
+  safety_constraints == satisfied
+  expected_latency <= configured_limit
+  expected_cost <= budget
 ```
 
-Routing score draft:
+A useful candidate estimate is:
 
 ```text
-score =
-  cost_score * 0.55
-+ accepted_task_cost_score * 0.20
-+ task_bucket_success_score * 0.12
-+ user_acceptance_score * 0.08
-+ latency_score * 0.03
-+ stability_score * 0.02
-- reject_penalty
-- fallback_tax_penalty
-- rate_limit_penalty
+expected_trajectory_cost
+  = initial_call_cost
+  + expected_validation_cost
+  + probability_of_retry * retry_cost
+  + probability_of_quality_escalation * escalation_cost
+  + probability_of_reliability_failure * fallback_cost
+  + switch_penalty
+  + context_replay_cost
 ```
 
-Cost-related factors must remain dominant.
+The router selects the lowest expected cost candidate satisfying all constraints.
 
-### Model Router
+### 7.9 Execution Coordinator
 
-Filtering order:
+The coordinator executes the selected profile and emits structured events.
 
-1. model enabled
-2. provider available
-3. not rate-limited
-4. required capability supported
-5. context window sufficient
-6. expected cost under budget
-7. historical success rate satisfies the current task bucket tolerance
-8. sort by expected effective cost
-9. tie-breaker: accepted task cost
-10. tie-breaker: accept rate
-11. final tie-breaker: latency
+It is responsible for:
 
-Routing output should include:
+- timeouts
+- streaming
+- token accounting
+- tool-call capture
+- reasoning-token capture where available
+- provider error normalization
+- session affinity updates
 
-- selected model
-- quality escalation chain
-- reliability fallback chain
-- estimated raw call cost
-- estimated task total cost
-- estimated accepted task cost
-- estimated fallback tax
-- estimated latency
-- selection reason
-- reject risk
-- filtered model reasons
+### 7.10 Validation Coordinator
 
-### Quality Escalation vs Reliability Fallback
-
-Do not collapse all fallback into one concept.
-
-#### Quality Escalation
-
-Quality escalation happens when the model result is not good enough.
-
-Triggers:
-
-- deterministic validation fails
-- judge fails
-- output violates schema
-- answer returns `no_answer`
-- task bucket has high reject rate for the selected model
-- cheap model confidence is too low
-
-Example:
+Validation order:
 
 ```text
-free model -> cheap paid model -> stronger model
+1. deterministic parser or schema check
+2. local formatter, compiler, lint, or test hook
+3. task-specific acceptance criteria
+4. cheap model repair when safe
+5. LLM judge only when deterministic evidence is insufficient
 ```
 
-#### Reliability Fallback
-
-Reliability fallback happens when the model or provider cannot complete the call.
-
-Triggers:
-
-- timeout
-- rate limit
-- provider error
-- context window error
-- model unavailable
-- network failure
-
-Example:
-
-```text
-same model via another provider -> similar model via another provider -> next cheapest viable model
-```
-
-Each fallback event should record:
-
-```text
-fallback_type = quality_escalation | reliability_fallback | budget_fallback
-```
-
-### Guardrail Verifier
-
-Use deterministic validation before LLM judging or model escalation.
-
-| Task | Validation |
-|---|---|
-| JSON | JSON parser + JSON Schema |
-| YAML | parser |
-| Code | formatter / compiler / lint / tests |
-| Markdown | markdown lint |
-| Shell | static risk checks |
-| Tool call | argument schema validation |
-
-Guardrail-first behavior:
-
-```text
-format failure -> cheap repair or deterministic repair
-missing context -> no_answer protocol
-tool argument error -> schema-guided retry
-code format error -> formatter before model escalation
-```
-
-LLM judge is used only when deterministic checks are not enough.
-
-### no_answer Protocol
-
-Cheap models should be allowed to refuse when context is insufficient instead of hallucinating.
-
-Protocol draft:
+`no_answer` is a valid structured outcome:
 
 ```json
 {
   "status": "no_answer",
-  "answer": null,
   "reason": "insufficient_context",
-  "needs": ["more_files", "web_search", "stronger_reasoning_model"]
+  "needs": ["more_files"]
 }
 ```
 
-Router behavior after `no_answer`:
+It may trigger context expansion rather than immediate model escalation.
 
-- add context if available
-- switch to long-context model
-- trigger RAG or search when supported
-- escalate to stronger model
-- ask user for missing input when no safe route exists
+### 7.11 Escalation Manager
 
-### Feedback Updater
+Three recovery categories are kept separate.
 
-Supported feedback:
+#### Quality escalation
+
+The provider worked, but the result failed quality requirements.
+
+#### Reliability fallback
+
+The call failed because of timeout, rate limit, provider error, unavailable model, or network failure.
+
+#### Budget fallback
+
+The planned route would exceed the remaining budget and must be replaced or stopped.
+
+These events update different profile statistics.
+
+### 7.12 Feedback Service
+
+Explicit feedback:
 
 ```text
 accept
 reject
 rate
 replay
-manual_edit
+manual_override
 ```
 
-Reject reasons:
+Implicit feedback:
 
 ```text
-low_quality
-wrong_answer
-missing_detail
-too_slow
-too_expensive
-format_wrong
-tool_error
-other
+similar re-ask
+immediate replay
+large manual edit
+forced model override
+abandoned trajectory
 ```
 
-Feedback effects:
-
-- accepted cheap model -> increase its task-bucket weight
-- rejected model -> decrease its task-bucket weight
-- repeated rejection -> raise quality floor for that task bucket
-- too expensive -> increase cost penalty
-- too slow -> increase latency penalty, but never above cost
-- manual edit -> treat as weak negative signal unless explicitly accepted
-
-## Cost Accounting
-
-GrandetAgent should track more than raw token cost.
-
-Core cost fields:
+Suggested evidence weights:
 
 ```text
-raw_call_cost
-  Cost of one model call.
-
-task_total_cost
-  Sum of all calls, retries, judges, repairs, fallbacks, and tool costs for one task.
-
-accepted_task_cost
-  Cost of a task that the user accepted.
-
-wasted_cost
-  Cost spent on rejected, failed, invalid, or unused outputs.
-
-fallback_tax
-  Extra cost introduced by retries, repairs, judges, and fallbacks.
-
-cost_per_accepted_task
-  Total cost divided by accepted task count.
+explicit accept          +1.0
+explicit reject          -1.0
+manual replay            -0.7
+explicit model override  -0.6
+similar re-ask           -0.4
+large manual edit        -0.3
 ```
 
-Model task profile should include:
+Implicit signals remain weaker because intent is uncertain.
 
-```yaml
-model_task_profile:
-  task_bucket: coding_simple_patch
-  raw_avg_cost_usd: 0.0004
-  effective_cost_per_accepted_task_usd: 0.0021
-  fallback_tax_rate: 0.18
-  accept_rate: 0.74
-  reject_rate: 0.16
-  reliability_failure_rate: 0.04
-  quality_escalation_rate: 0.10
-```
+### 7.13 Evaluation Service
 
-## Baseline Savings Analysis
+Evaluation has two layers.
 
-GrandetAgent should estimate savings against a configured baseline model.
+#### Golden Set
 
-Command:
-
-```bash
-grandet analyze savings --baseline openai/gpt-5.5
-```
-
-Example output:
+Small, reviewed, stable cases containing:
 
 ```text
-Total actual cost: $0.42
-Estimated baseline cost: $5.83
-Estimated savings: $5.41
-Savings rate: 92.8%
-Accepted task quality delta: -3.2%
+prompt
+reference or baseline result
+task family
+difficulty
+acceptance criteria
+validators
 ```
 
-Baseline analysis must be explicit and approximate unless the baseline actually ran.
+#### Shadow Replay
 
-## User Tolerance Learning
+Historical trajectory records are replayed against alternative policies or execution profiles.
 
-Example profile:
-
-```yaml
-user:
-  id: local
-  profile_version: v1
-
-preferences:
-  cost_sensitivity: 0.92
-  quality_sensitivity: 0.58
-  latency_sensitivity: 0.30
-  default_acceptance_threshold: 0.62
-
-task_tolerance:
-  coding_simple_patch:
-    min_success_probability: 0.78
-    reject_rate_7d: 0.28
-    accept_rate_7d: 0.62
-    preferred_price_quantile: 0.20
-  summarization_short:
-    min_success_probability: 0.60
-    reject_rate_7d: 0.07
-    accept_rate_7d: 0.90
-    preferred_price_quantile: 0.05
-```
-
-Learning must be conservative:
-
-- single feedback event only makes a small adjustment
-- repeated feedback has stronger effect
-- recent 7-day data weighs more than older 30-day data
-- minimum samples are required before strong routing changes
-- public benchmarks must not overpower local acceptance data
-
-Profile signal priority:
+Every trace must preserve:
 
 ```text
-user feedback > local runtime performance > local shadow eval > local eval suite > public benchmark > provider model card
+state -> candidates -> policy -> action -> outcome -> evaluation
 ```
 
-## Shadow Evaluation
+This makes policy comparison possible without affecting the original user result.
 
-The first version does not require a daemon. Shadow evaluation is manually triggered.
+### 7.14 Policy Lifecycle Manager
 
-Command:
-
-```bash
-grandet eval shadow --sample 20
-grandet eval shadow --task-bucket coding_simple_patch --sample 10
-grandet eval shadow --task-bucket extraction_json --models free,cheap
-```
-
-Default privacy:
-
-```yaml
-privacy:
-  allow_shadow_eval_for_user_tasks: false
-  redact_before_eval: true
-```
-
-Shadow evaluation must have a strict budget.
-
-Evaluation output should include:
-
-- winner model
-- accepted-quality cost
-- latency
-- fallback risk
-- estimated savings
-- recommended routing change
-
-Example:
+Policy states:
 
 ```text
-For task_bucket=summarization_short:
-  current preferred: deepseek-chat
-  candidate: qwen-free
-  quality delta: -2.1%
-  cost delta: -100%
-  latency delta: +0.8s
-  recommendation: route more summarization_short tasks to qwen-free after 10 more samples
+DRAFT
+VALIDATED
+ACTIVE
+DEGRADED
+FROZEN
+ROLLED_BACK
+ARCHIVED
 ```
 
-## Free Model Governance
+A learned adjustment creates a new draft. It does not directly mutate the active policy.
 
-Free models are useful but unstable. They need a lifecycle.
+Activation requires:
 
-Commands:
+- schema validation
+- Golden Set regression pass
+- routing overhead budget pass
+- cost improvement or justified quality improvement
+- no safety regression
 
-```bash
-grandet model smoke-test --free-only
-grandet model clean-free
-grandet model quarantine <model-id>
-grandet model promote <model-id>
+## 8. End-to-End Execution Flow
+
+```text
+1. User submits a goal.
+2. Session Manager loads session state and active policy version.
+3. Trajectory Service creates a trajectory and opens the cost ledger.
+4. Context Planner estimates context and replay cost.
+5. Task Analyzer produces family, difficulty, domain, and constraints.
+6. Candidate Builder filters execution profiles.
+7. Cost Estimator predicts full trajectory cost for each candidate.
+8. Policy Engine selects the cheapest acceptable candidate.
+9. Execution Coordinator calls the provider.
+10. Validation Coordinator validates the result.
+11. Escalation Manager repairs, expands context, escalates, or falls back.
+12. Trajectory reaches a terminal technical state.
+13. CLI presents the result and trace summary.
+14. Feedback Service records explicit or implicit feedback.
+15. Profile Store updates evidence windows.
+16. Policy learner may generate a new draft policy.
 ```
 
-A free model can enter real tasks only when:
+## 9. Coordination by Events
 
-- smoke test passed
-- recent health checks passed
-- rate limit errors are under threshold
-- task-bucket-specific profile is acceptable
-- the task is not above the configured risk threshold
+Business services coordinate through domain events rather than direct cross-module database writes.
 
-## MVP Scope
+Examples:
 
-Must have:
+```text
+TrajectoryStarted
+TaskClassified
+CandidatesBuilt
+RoutingDecisionMade
+ModelCallCompleted
+ValidationFailed
+QualityEscalated
+ReliabilityFallbackTriggered
+TrajectoryValidated
+UserAccepted
+UserRejected
+PolicyDraftGenerated
+PolicyActivated
+PolicyRolledBack
+```
 
-- `grandet init`
-- local config directory
-- SQLite storage
-- OpenAI-compatible provider
-- OpenRouter provider
-- LiteLLM-compatible provider example
-- model list/sync/profile commands
-- `grandet run`
-- task bucket classification
-- cost accounting
-- baseline savings analysis
-- stingy router
-- separate quality escalation and reliability fallback
-- feedback commands
-- trace and cost analysis
-- basic user tolerance update
-- free model smoke test and cleanup
+Each event is persisted before derived profiles are updated. This supports auditability and replay.
 
-Deferred:
+## 10. Red Lines and Kill Switch
 
-- web dashboard
-- server gateway
-- Kubernetes deployment
-- multi-tenancy
-- daemon
-- complex DAG agent
-- full auto-learning algorithm
-- learned router
+The local tool uses policy rollback rather than online traffic rollback.
+
+Red lines:
+
+```text
+safety or privacy violation
+Golden Set regression beyond configured threshold
+re-ask rate anomaly
+routing overhead above budget
+cost per accepted trajectory regression
+provider instability
+```
+
+Response:
+
+```text
+freeze learning
+mark active policy DEGRADED
+activate last stable policy
+retain all traces for diagnosis
+```
+
+Rollback must not mean “always use the most expensive model.” It restores the last stable cost-first policy.
+
+## 11. Local Storage Layout
+
+```text
+~/.grandet/
+  config.yaml
+  providers.yaml
+  models.yaml
+  user-profile.yaml
+  grandet.db
+  policies/
+    stingy-v1.yaml
+    stingy-v2.yaml
+  evals/
+    golden/
+    regression/
+    safety/
+  traces/
+  cache/
+  logs/
+```
+
+## 12. First-Version Tradeoffs
+
+### Chosen
+
+- local CLI over hosted service
+- SQLite over external database
+- rule-based routing over learned routing
+- task-level routing plus session affinity
+- deterministic validation over universal LLM judging
+- manual shadow replay over daemon-based continuous evaluation
+- explicit policy versions over silent adaptive mutation
+
+### Deferred
+
+- step-level dynamic routing
+- distributed execution
+- online canary and A/B testing
+- reinforcement learning
+- automatic policy activation without user-visible evidence
+- provider-specific cache internals that cannot be observed reliably
+
+## 13. Success Criteria
+
+GrandetAgent is successful when it can demonstrate all of the following:
+
+```text
+lower cost_per_accepted_trajectory than a fixed baseline
+no material Golden Set regression
+bounded routing overhead
+bounded fallback tax
+traceable and reversible policy changes
+user-specific improvement over time
+```
+
+The project is not judged by how many providers it supports or how complex its Agent graph becomes. It is judged by how much unnecessary model spending it removes while preserving outcomes the user accepts.
