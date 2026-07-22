@@ -1,34 +1,76 @@
 models:
   - id: openrouter/qwen/qwen3-coder-free
     provider: openrouter
-    name: qwen3-coder-free
+    upstream_name: qwen3-coder-free
     enabled: true
     is_free: true
+    lifecycle_state: DISCOVERED
+    context_window: 131072
     capabilities:
-      - coding_simple
-      - coding_medium
-      - chinese
+      - code_generation
+      - debugging
+      - documentation
       - summarization
-    quality_hint: medium
+      - chinese
 
   - id: deepseek/deepseek-chat
     provider: deepseek
-    name: deepseek-chat
+    upstream_name: deepseek-chat
     enabled: false
     is_free: false
+    lifecycle_state: ACTIVE
     capabilities:
-      - chat
-      - coding_simple
+      - general_qa
+      - code_generation
+      - debugging
       - summarization
-      - reasoning_light
 
   - id: openai/gpt-5.4-mini
     provider: openai
-    name: gpt-5.4-mini
+    upstream_name: gpt-5.4-mini
     enabled: false
     is_free: false
+    lifecycle_state: ACTIVE
     capabilities:
-      - coding_medium
+      - code_generation
+      - architecture_design
       - reasoning
       - tool_calling
       - json_output
+
+execution_profiles:
+  - id: qwen-free-no-thinking
+    model: openrouter/qwen/qwen3-coder-free
+    enabled: true
+    reasoning:
+      mode: disabled
+    max_output_tokens: 1200
+    temperature: 0.2
+    tool_calling: false
+
+  - id: deepseek-chat-default
+    model: deepseek/deepseek-chat
+    enabled: false
+    reasoning:
+      mode: disabled
+    max_output_tokens: 2000
+    temperature: 0.2
+    tool_calling: true
+
+  - id: openai-mini-default
+    model: openai/gpt-5.4-mini
+    enabled: false
+    reasoning:
+      mode: low
+    max_output_tokens: 2400
+    temperature: 0.2
+    tool_calling: true
+
+  - id: openai-mini-high-reasoning
+    model: openai/gpt-5.4-mini
+    enabled: false
+    reasoning:
+      mode: high
+    max_output_tokens: 4000
+    temperature: 0.1
+    tool_calling: true
