@@ -1,79 +1,107 @@
 # GrandetAgent
 
-GrandetAgent is a local-first, cost-aware Agent CLI.
+GrandetAgent is a local-first, cost-optimizing Agent CLI.
 
-Its goal is simple:
+Its purpose is:
 
-> Use the cheapest possible model that is still likely to complete the task successfully.
+> Coordinate the cheapest execution profiles that are still likely to produce an acceptable result for the complete Agent trajectory.
 
-GrandetAgent does not default to the strongest model. It routes each task through a stingy model-selection strategy that prefers free and low-cost models, uses fallback only when needed, and learns from local user feedback such as `accept`, `reject`, and `rate`.
+GrandetAgent is not interested in the cheapest isolated model call. It tracks the full cost of routing, reasoning, context replay, tools, validation, repair, retry, escalation, fallback, and rejected work.
 
-## Core Ideas
+The primary metric is:
 
-- Price is the first priority.
-- Free models are preferred, but not blindly trusted.
-- Cheap models are tried before expensive models.
-- Fallback is used when quality, validation, or user tolerance requires it.
-- Every task must be traceable: selected model, fallback chain, estimated cost, actual cost, latency, and user feedback.
-- User feedback gradually changes local task tolerance and model routing weights.
-
-## First Version Scope
-
-GrandetAgent v0.x is a local CLI, not a web platform.
-
-```bash
-grandet <command> [options]
+```text
+cost_per_accepted_trajectory
 ```
 
-The first version focuses on:
+## Core Philosophy
 
-- local configuration under `~/.grandet/`
-- OpenAI-compatible providers
-- OpenRouter model discovery
-- manual model configuration
-- SQLite local storage
-- stingy model routing
-- fallback chains
-- task trace and cost analysis
-- user feedback learning
-- free model cleanup
+- Price is the first priority; success and safety are constraints.
+- A trajectory, not a single call, is the economic unit.
+- The router selects execution profiles, not only model names.
+- Turning reasoning down may be cheaper than switching models.
+- Session continuity and context replay have economic value.
+- Routing itself must cost less than it saves.
+- Deterministic validators run before expensive judges or model escalation.
+- Public benchmarks initialize profiles; local evidence eventually overrides them.
+- User feedback creates versioned policy drafts rather than silently changing behavior.
+- Every routing and policy decision is inspectable and reversible.
 
-## Example Commands
+## First-Version Shape
+
+GrandetAgent v0.x is a local CLI, not a hosted platform.
+
+```bash
+grandet <resource> <action> [options]
+```
+
+Local data is stored under:
+
+```text
+~/.grandet/
+  config.yaml
+  providers.yaml
+  models.yaml
+  user-profile.yaml
+  grandet.db
+  policies/
+  evals/
+  traces/
+  cache/
+  logs/
+```
+
+## Planned Capabilities
+
+- OpenAI-compatible and OpenRouter providers
+- model discovery and free-model governance
+- model execution profiles with reasoning modes
+- session affinity and model-switch penalties
+- task-family and difficulty classification
+- full trajectory cost ledger
+- rule-based stingy routing
+- deterministic validation and cheap repair
+- separate quality escalation and reliability fallback
+- explicit and implicit user feedback
+- versioned policy validation, activation, and rollback
+- Golden Set evaluation and historical shadow replay
+
+## Example CLI
 
 ```bash
 grandet init
 
 grandet provider list
 grandet model sync --provider openrouter
-grandet model list
+grandet profile list
 
-grandet run "Summarize this document" --context ./docs/architecture.md --trace
+grandet run "Analyze this Kubernetes error" --trace
 
-grandet accept <task-id>
-grandet reject <task-id> --reason low_quality
-grandet rate <task-id> --score 4
+grandet task cost <trajectory-id>
+grandet accept <trajectory-id>
+grandet reject <trajectory-id> --reason wrong_answer
 
-grandet task trace <task-id>
-grandet analyze cost --last 7d
+grandet policy health
+grandet eval run --suite golden
+grandet eval shadow --sample 20
+
+grandet analyze savings --baseline <profile-id>
 ```
-
-## Repository Status
-
-This repository is in early design and initialization.
-
-Current focus:
-
-1. CLI skeleton
-2. local config initialization
-3. model/provider config format
-4. SQLite storage schema
-5. cost-first routing design
 
 ## Documentation
 
-- [Architecture](docs/architecture.md)
-- [CLI Design](docs/cli.md)
+- [Architecture and philosophy](docs/architecture.md)
+- [Business-layer implementation logic](docs/business-logic.md)
+- [Domain data model](docs/data-model.md)
+- [Design decisions and tradeoffs](docs/design-decisions.md)
+- [CLI design](docs/cli.md)
 - [Roadmap](docs/roadmap.md)
+
+## Current Status
+
+The repository is in architecture and foundation development.
+
+The implementation sequence intentionally starts with telemetry, baseline measurement, and trajectory accounting before advanced routing. GrandetAgent must first prove what it is optimizing.
 
 ## Development
 
