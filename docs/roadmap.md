@@ -1,180 +1,419 @@
 # GrandetAgent Roadmap
 
-## Milestone 0: Project Initialization
+The roadmap follows one rule:
 
-- README
-- License
-- Go module
-- minimal CLI skeleton
-- default config templates
+> Measure real trajectory economics before attempting increasingly intelligent routing.
+
+Each milestone must leave the system usable and inspectable through the CLI.
+
+## Milestone 0: Project and Domain Foundation
+
+Status: initial skeleton exists.
+
+Deliverables:
+
+- Go module and minimal CLI
 - `grandet init`
-- local `~/.grandet` directory creation
+- local `~/.grandet/` layout
+- configuration templates
 - CI workflow
+- domain package boundaries
+- SQLite migration framework
+- stable ID and clock abstractions
 
-## Milestone 1: Model and Provider Foundation
+Exit criteria:
 
-- provider config loader
-- OpenAI-compatible client
-- OpenRouter provider
-- LiteLLM proxy as an OpenAI-compatible provider example
-- model list command
-- model sync command
-- model enable / disable commands
-- basic model profile format
-- provider health check
+- initialization is idempotent
+- migrations are tested
+- CLI, application, domain, and infrastructure dependencies are separated
 
-## Milestone 2: Cost Accounting
+## Milestone 1: Telemetry and Baseline
 
-Move cost accounting before advanced routing. GrandetAgent must know what it is optimizing before it routes.
+Do not build an intelligent router before knowing the request distribution and current cost.
 
-- token estimation
-- raw model call cost
-- task total cost
-- accepted task cost
-- wasted cost
-- fallback tax
-- cost per accepted task
-- baseline model configuration
-- savings analysis against baseline
+Deliverables:
+
+- session records
+- trajectory records
+- task and step records
+- append-only trajectory events
+- token and latency collection
+- tool-call outcome collection
+- reasoning-token collection where available
+- provider error normalization
+- baseline execution profile configuration
+- baseline cost and task-distribution reports
 
 Commands:
 
 ```bash
+grandet run --profile <baseline-profile> "..."
 grandet analyze cost --last 7d
-grandet analyze savings --baseline openai/gpt-5.5
-grandet task cost <task-id>
+grandet analyze task-distribution --last 30d
 ```
 
-## Milestone 3: Rule-based Stingy Router
+Exit criteria:
 
-Start with transparent rules before learned routing.
+- every paid call belongs to a trajectory
+- input, output, reasoning, retry, and fallback costs can be attributed
+- a fixed-profile baseline can be measured
 
-- task bucket classification
-- model capability filtering
-- context window filtering
-- budget filtering
-- cheapest viable model selection
-- quality escalation chain
-- reliability fallback chain
-- routing decision trace
-- filtered model reasons
+## Milestone 2: Provider, Model, and Execution Profile Registry
 
-Initial task buckets:
+Deliverables:
 
-- `chat_simple`
-- `classification`
-- `extraction_json`
-- `summarization_short`
-- `summarization_long`
-- `document_qa`
-- `coding_explain`
-- `coding_simple_patch`
-- `coding_complex_design`
-- `k8s_troubleshooting`
-- `log_analysis`
+- provider configuration loader
+- OpenAI-compatible provider adapter
+- OpenRouter adapter
+- LiteLLM-compatible example
+- model discovery and synchronization
+- versioned price history
+- capability normalization
+- execution profiles with reasoning modes and limits
+- provider health checks
+- manual enable, disable, and quarantine operations
 
-## Milestone 4: Task Execution, Trace, and Guardrails
+Commands:
+
+```bash
+grandet provider list
+grandet provider test <provider>
+grandet model sync --provider openrouter
+grandet profile list
+grandet profile show <profile-id>
+```
+
+Exit criteria:
+
+- router-facing code sees execution profiles rather than raw provider models
+- the same model may expose no-thinking and reasoning-enabled profiles
+- historical price changes remain traceable
+
+## Milestone 3: Trajectory Cost Ledger
+
+Deliverables:
+
+- cost ledger entries
+- raw call cost
+- task and trajectory total cost
+- reasoning cost
+- context replay cost estimate
+- routing overhead
+- validation and judge cost
+- retry and repair cost
+- quality-escalation and reliability-fallback cost
+- rejected-work cost
+- baseline savings estimates
+
+Primary metrics:
+
+```text
+cost_per_successful_trajectory
+cost_per_accepted_trajectory
+fallback_tax
+context_replay_tax
+routing_overhead_ratio
+```
+
+Commands:
+
+```bash
+grandet task cost <trajectory-id>
+grandet analyze cost --last 7d
+grandet analyze savings --baseline <profile-id>
+```
+
+Exit criteria:
+
+- reports no longer rely on per-call cost alone
+- estimates and measured values are visibly distinguished
+
+## Milestone 4: Task Taxonomy and Rule-Based Router
+
+Start with transparent, low-overhead routing.
+
+Deliverables:
+
+- task-family classification
+- 1-5 difficulty classification
+- domain, risk, seriousness, and context-size features
+- L0 hard constraints
+- L1 local rule classifier
+- candidate filtering
+- expected trajectory cost estimation
+- cheapest acceptable profile selection
+- routing-decision and rejected-candidate traces
+
+Initial task families:
+
+```text
+general_qa
+classification
+extraction
+documentation
+summarization
+code_generation
+code_review
+debugging
+architecture_design
+test_generation
+error_recovery
+data_analysis
+tool_use_planning
+kubernetes_troubleshooting
+```
+
+Exit criteria:
+
+- no LLM classifier is required for normal routing
+- routing overhead is measured and bounded
+- every candidate rejection has an explanation
+
+## Milestone 5: Session Affinity and Cache-Aware Economics
+
+Deliverables:
+
+- session resume support
+- active profile affinity
+- context fingerprinting
+- context replay token estimation
+- model switch penalty
+- reasoning-mode change before model-family switch
+- session switch analysis report
+
+Commands:
+
+```bash
+grandet session show <session-id>
+grandet analyze switching --session <session-id>
+```
+
+Exit criteria:
+
+- a superficially cheaper model is not selected when switch and replay costs destroy savings
+- affinity can be overridden explicitly
+
+## Milestone 6: Execution, Guardrails, and Escalation
+
+Deliverables:
 
 - `grandet run`
-- task records
-- model call spans
-- fallback events
-- trace export
-- concise and verbose output modes
-- deterministic validators before LLM judging
-- JSON / YAML validation
-- basic code formatting or static check hooks
-- `no_answer` protocol support
+- streaming and timeout handling
+- JSON and YAML validation
+- tool argument validation
+- formatter, compiler, lint, and test hooks
+- `no_answer` protocol
+- deterministic repair
+- same-profile constrained retry
+- context expansion
+- separate quality-escalation chain
+- separate reliability-fallback chain
+- hard budget handling
 
 Commands:
 
 ```bash
-grandet run "Analyze this Kubernetes error" --trace
-grandet task trace <task-id>
+grandet run "..." --context <path> --trace
+grandet task trace <trajectory-id>
 ```
 
-## Milestone 5: Feedback Learning
+Exit criteria:
 
-- `grandet accept`
-- `grandet reject`
-- `grandet rate`
-- feedback reasons
-- user profile update
-- task-bucket tolerance update
-- model task profile update
-- reject-rate-aware routing
-- accepted-task-cost-aware routing
+- reliability failures do not damage quality statistics
+- formatting failures do not automatically invoke premium models
+- hard budgets are never silently exceeded
+
+## Milestone 7: Feedback and User Tolerance
+
+Deliverables:
+
+- explicit accept, reject, and rate commands
+- manual replay and model override signals
+- implicit re-ask detection
+- recent and stable evidence windows
+- user tolerance by task family, difficulty, and domain
+- execution-profile performance profiles
+- expected escalation and accepted-trajectory-cost updates
 
 Commands:
 
 ```bash
-grandet accept <task-id>
-grandet reject <task-id> --reason wrong_answer
-grandet rate <task-id> --score 4
+grandet accept <trajectory-id>
+grandet reject <trajectory-id> --reason wrong_answer
+grandet rate <trajectory-id> --score 4
+grandet task replay <trajectory-id>
 ```
 
-## Milestone 6: Local Eval and Shadow Evaluation
+Exit criteria:
 
-- local eval suite format
-- baseline eval
-- shadow eval over historical tasks
-- compare free / cheap / baseline models
-- estimated routing recommendation
-- strict shadow eval budget
-- privacy controls and redaction hooks
+- one isolated feedback event cannot radically change routing
+- explicit feedback is stronger than implicit feedback
+- profile evidence is inspectable
+
+## Milestone 8: Policy Versioning and Kill Switch
+
+Deliverables:
+
+- policy YAML schema
+- policy repository
+- draft generation from evidence
+- static validation
+- version diff
+- explicit activation
+- active-policy health report
+- freeze and rollback
+- last-stable-policy recovery
+
+Policy states:
+
+```text
+DRAFT
+VALIDATED
+ACTIVE
+DEGRADED
+FROZEN
+ROLLED_BACK
+ARCHIVED
+```
 
 Commands:
 
 ```bash
-grandet eval run --suite coding-basic
+grandet policy list
+grandet policy validate <file>
+grandet policy diff <v1> <v2>
+grandet policy activate <version>
+grandet policy health
+grandet policy rollback
+```
+
+Exit criteria:
+
+- learning never mutates the active policy invisibly
+- every activation has validation evidence and a rollback target
+
+## Milestone 9: Golden Set and Offline Evaluation
+
+Deliverables:
+
+- Golden Set YAML format
+- initial 30 reviewed cases
+- acceptance criteria and validator definitions
+- general, coding, and Kubernetes/SRE suites
+- baseline strong and weak profile runs
+- quality retention
+- PGR/APGR/CPT where applicable
+- judge bias controls for offline pairwise evaluation
+- regression and safety suites
+
+Commands:
+
+```bash
+grandet eval run --suite golden
+grandet eval compare --profiles <a>,<b>
+grandet eval curve --strong <profile> --weak <profile>
+```
+
+Exit criteria:
+
+- policy changes can be evaluated before activation
+- judge and validator disagreements are visible
+
+## Milestone 10: Shadow Replay
+
+Deliverables:
+
+- historical state snapshots
+- replay by policy version
+- replay by execution profile
+- reasoning-mode comparisons
+- preserved original trajectory
+- cost, quality, latency, and fallback-tax deltas
+- routing recommendations
+- strict evaluation budget and privacy controls
+
+Commands:
+
+```bash
 grandet eval shadow --sample 20
-grandet eval shadow --task-bucket summarization_short --models free,cheap
-grandet eval report
+grandet eval shadow --task-family debugging
+grandet eval replay <trajectory-id> --policy <version>
 ```
 
-## Milestone 7: Free Model Governance
+Exit criteria:
 
-- free model lifecycle state machine
-- smoke test command
-- quarantine command
-- promote command
-- clean-free command
-- rate-limit based degradation
-- reliability failure tracking
-- task-bucket-specific free model eligibility
+- a candidate policy can be compared without changing the original user outcome
+- shadow results generate recommendations, not silent activation
+
+## Milestone 11: Free Model Governance
+
+Deliverables:
+
+- lifecycle state machine
+- smoke tests
+- task-family admission rules
+- rate-limit and timeout degradation
+- price-change handling
+- quarantine, promote, and cleanup commands
 
 Commands:
 
 ```bash
 grandet model smoke-test --free-only
-grandet model clean-free
-grandet model quarantine <model-id>
 grandet model promote <model-id>
+grandet model quarantine <model-id>
+grandet model clean-free
 ```
 
-## Milestone 8: Context Optimizer
+Exit criteria:
 
-- token estimation for files and prompts
-- duplicate context trimming
-- context size warnings
+- newly discovered free models cannot directly enter high-risk tasks
+- free-model value includes failure and fallback tax
+
+## Milestone 12: Local Semantic Router
+
+Only begin after enough labeled local data exists.
+
+Deliverables:
+
+- embedding-based task matching
+- lightweight difficulty classifier
+- classifier confidence calibration
+- routing-value gate
+- rule and classifier disagreement analysis
+- offline comparison against the rule router
+
+Exit criteria:
+
+- classifier improves the cost-quality frontier
+- classifier cost and latency stay within router budget
+
+## Milestone 13: Context Optimization
+
+Deliverables:
+
+- duplicate context removal
+- history trimming
+- stable-prefix detection
 - simple context packing
-- later: chunking, embedding retrieval, rerank, compression
+- later: chunking, retrieval, reranking, compression
 
 Commands:
 
 ```bash
-grandet context estimate --file big.md
-grandet context pack --context ./repo --query "fix node taint bug"
+grandet context estimate --file <path>
+grandet context pack --context <path> --query "..."
 ```
 
-## Deferred
+## Deferred Beyond the Local CLI
 
-- web dashboard
 - OpenAI-compatible server mode
-- daemon mode
-- multi-tenant support
+- background daemon and scheduled evaluation
+- multi-user service
+- centralized dashboard
+- online canary and A/B infrastructure
 - Kubernetes deployment
-- Prometheus / Grafana integration
-- complex DAG-based multi-agent orchestration
-- learned router
-- distillation pipeline
+- distributed workers
+- step-level learned routing
+- reinforcement learning policy control
+- automatic policy activation without explicit evidence
