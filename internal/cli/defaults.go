@@ -1,64 +1,102 @@
 package cli
 
-const defaultConfigYAML = `version: v1
+const defaultConfigYAML = `version: v2
 
 strategy:
   name: stingy
-  objective: minimize_cost_per_accepted_task
+  objective: minimize_cost_per_accepted_trajectory
+  active_policy: stingy-v1
   cost_first: true
   allow_quality_escalation: true
   allow_reliability_fallback: true
+  allow_budget_fallback: true
   max_quality_escalation_depth: 3
   max_reliability_fallback_depth: 2
-  max_retry_per_model: 1
-  default_quality_floor: low_medium
+  max_retry_per_profile: 1
   learn_from_feedback: true
+  auto_activate_learned_policy: false
+
+router:
+  max_latency_ms: 50
+  max_cost_ratio: 0.01
+  allow_llm_classifier: false
+  min_expected_routing_value_usd: 0.0001
+  uncertainty_margin: 0.10
+
+session:
+  model_affinity: true
+  track_context_fingerprint: true
+  switch_penalty_enabled: true
+  prefer_reasoning_mode_change_before_model_switch: true
 
 baseline:
   enabled: true
-  model: openai/gpt-5.5
-  note: Used for savings analysis only. It is not called unless explicitly requested.
+  execution_profile: openai-mini-default
+  mode: estimated
+  note: Used for savings analysis unless explicitly executed.
 
 runtime:
   database: ~/.grandet/grandet.db
+  policy_dir: ~/.grandet/policies
   trace_dir: ~/.grandet/traces
   cache_dir: ~/.grandet/cache
   default_timeout_seconds: 120
   stream: true
 
 privacy:
+  store_raw_prompts: false
   allow_shadow_eval_for_user_tasks: false
   require_confirm_before_using_free_models: false
   redact_before_eval: true
 
 budget:
   daily_limit_usd: 1.00
-  task_default_limit_usd: 0.05
+  trajectory_default_limit_usd: 0.05
   shadow_eval_daily_limit_usd: 0.20
 
 cost_accounting:
+  track_routing_cost: true
   track_raw_call_cost: true
-  track_task_total_cost: true
-  track_accepted_task_cost: true
+  track_trajectory_total_cost: true
+  track_successful_trajectory_cost: true
+  track_accepted_trajectory_cost: true
   track_wasted_cost: true
   track_fallback_tax: true
+  track_context_replay_tax: true
+  track_reasoning_tokens: true
 
 free_models:
   allow_for_real_tasks: true
   require_smoke_test: true
-  require_task_bucket_profile: true
+  require_task_family_profile: true
   max_consecutive_failures: 3
   auto_degrade_on_rate_limit: true
 
 feedback:
   ask_after_run: false
+  detect_implicit_reask: true
   default_if_skipped: neutral
+  recent_window_days: 7
+  stable_window_days: 30
+  min_samples_before_policy_draft: 5
+
+policy:
+  require_static_validation: true
+  require_golden_set_validation: true
+  require_explicit_activation: true
+  rollback_on_safety_failure: true
+  quality_regression_threshold: 0.05
+  reask_zscore_threshold: 2.0
 
 shadow_eval:
   enabled: false
   max_daily_budget_usd: 0.20
   prefer_free_models: true
   redact_before_eval: true
+
+golden_set:
+  directory: ~/.grandet/evals/golden
+  require_acceptance_criteria: true
 `
 
 const defaultProvidersYAML = `providers:
@@ -95,43 +133,75 @@ const defaultProvidersYAML = `providers:
 const defaultModelsYAML = `models:
   - id: openrouter/qwen/qwen3-coder-free
     provider: openrouter
-    name: qwen3-coder-free
+    upstream_name: qwen3-coder-free
     enabled: true
     is_free: true
-    free_state: FREE_DISCOVERED
+    lifecycle_state: DISCOVERED
+    context_window: 131072
     capabilities:
-      - coding_simple
-      - coding_medium
-      - chinese
+      - code_generation
+      - debugging
+      - documentation
       - summarization
-    quality_hint: medium
+      - chinese
 
   - id: deepseek/deepseek-chat
     provider: deepseek
-    name: deepseek-chat
+    upstream_name: deepseek-chat
     enabled: false
     is_free: false
+    lifecycle_state: ACTIVE
     capabilities:
-      - chat
-      - coding_simple
+      - general_qa
+      - code_generation
+      - debugging
       - summarization
-      - reasoning_light
 
   - id: openai/gpt-5.4-mini
     provider: openai
-    name: gpt-5.4-mini
+    upstream_name: gpt-5.4-mini
     enabled: false
     is_free: false
+    lifecycle_state: ACTIVE
     capabilities:
-      - coding_medium
+      - code_generation
+      - architecture_design
       - reasoning
       - tool_calling
       - json_output
+
+execution_profiles:
+  - id: qwen-free-no-thinking
+    model: openrouter/qwen/qwen3-coder-free
+    enabled: true
+    reasoning:
+      mode: disabled
+    max_output_tokens: 1200
+    temperature: 0.2
+    tool_calling: false
+
+  - id: deepseek-chat-default
+    model: deepseek/deepseek-chat
+    enabled: false
+    reasoning:
+      mode: disabled
+    max_output_tokens: 2000
+    temperature: 0.2
+    tool_calling: true
+
+  - id: openai-mini-default
+    model: openai/gpt-5.4-mini
+    enabled: false
+    reasoning:
+      mode: low
+    max_output_tokens: 2400
+    temperature: 0.2
+    tool_calling: true
 `
 
 const defaultUserProfileYAML = `user:
   id: local
-  profile_version: v1
+  profile_version: v2
 
 preferences:
   cost_sensitivity: 0.92
@@ -139,20 +209,84 @@ preferences:
   latency_sensitivity: 0.30
   default_acceptance_threshold: 0.62
 
+feedback_weights:
+  explicit_accept: 1.00
+  explicit_reject: -1.00
+  manual_replay: -0.70
+  manual_model_override: -0.60
+  implicit_reask: -0.40
+  large_manual_edit: -0.30
+
 task_tolerance:
-  coding_simple_patch:
-    min_success_probability: 0.78
-    reject_rate_7d: 0.00
-    accept_rate_7d: 0.00
+  - task_family: code_generation
+    difficulty: 2
+    domain: general
+    min_success_probability: 0.76
     preferred_price_quantile: 0.20
-  summarization_short:
+    sample_count: 0
+
+  - task_family: debugging
+    difficulty: 3
+    domain: kubernetes
+    min_success_probability: 0.82
+    preferred_price_quantile: 0.25
+    sample_count: 0
+
+  - task_family: summarization
+    difficulty: 2
+    domain: general
     min_success_probability: 0.60
-    reject_rate_7d: 0.00
-    accept_rate_7d: 0.00
     preferred_price_quantile: 0.05
-  extraction_json:
-    min_success_probability: 0.72
-    reject_rate_7d: 0.00
-    accept_rate_7d: 0.00
-    preferred_price_quantile: 0.10
+    sample_count: 0
+`
+
+const defaultPolicyYAML = `metadata:
+  name: stingy
+  version: stingy-v1
+  status: DRAFT
+
+objective:
+  type: minimize_cost_per_accepted_trajectory
+  cost_first: true
+
+signals:
+  hard_constraints:
+    enabled: true
+  local_rules:
+    enabled: true
+  semantic_classifier:
+    enabled: false
+  llm_classifier:
+    enabled: false
+
+routing:
+  preserve_session_affinity: true
+  account_for_context_replay: true
+  prefer_reasoning_mode_change_before_model_switch: true
+  max_router_latency_ms: 50
+  max_router_cost_ratio: 0.01
+
+constraints:
+  min_success_probability: 0.62
+  max_trajectory_cost_usd: 0.05
+
+recovery:
+  quality_escalation:
+    enabled: true
+    max_depth: 3
+  reliability_fallback:
+    enabled: true
+    max_depth: 2
+  budget_fallback:
+    enabled: true
+
+validation:
+  deterministic_first: true
+  allow_live_llm_judge: true
+
+kill_switch:
+  safety_failure: true
+  quality_regression_threshold: 0.05
+  reask_zscore_threshold: 2.0
+  routing_overhead_ratio_threshold: 0.01
 `
