@@ -1,6 +1,6 @@
 user:
   id: local
-  profile_version: v1
+  profile_version: v2
 
 preferences:
   cost_sensitivity: 0.92
@@ -8,19 +8,39 @@ preferences:
   latency_sensitivity: 0.30
   default_acceptance_threshold: 0.62
 
+feedback_weights:
+  explicit_accept: 1.00
+  explicit_reject: -1.00
+  manual_replay: -0.70
+  manual_model_override: -0.60
+  implicit_reask: -0.40
+  large_manual_edit: -0.30
+
 task_tolerance:
-  coding:
-    min_success_probability: 0.78
-    reject_rate_7d: 0.00
-    accept_rate_7d: 0.00
+  - task_family: code_generation
+    difficulty: 2
+    domain: general
+    min_success_probability: 0.76
     preferred_price_quantile: 0.20
-  summarization:
+    sample_count: 0
+
+  - task_family: debugging
+    difficulty: 3
+    domain: kubernetes
+    min_success_probability: 0.82
+    preferred_price_quantile: 0.25
+    sample_count: 0
+
+  - task_family: summarization
+    difficulty: 2
+    domain: general
     min_success_probability: 0.60
-    reject_rate_7d: 0.00
-    accept_rate_7d: 0.00
     preferred_price_quantile: 0.05
-  extraction:
+    sample_count: 0
+
+  - task_family: extraction
+    difficulty: 2
+    domain: general
     min_success_probability: 0.72
-    reject_rate_7d: 0.00
-    accept_rate_7d: 0.00
     preferred_price_quantile: 0.10
+    sample_count: 0
