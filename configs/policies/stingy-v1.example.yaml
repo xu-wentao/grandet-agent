@@ -1,0 +1,102 @@
+metadata:
+  name: stingy
+  version: stingy-v1
+  status: DRAFT
+  description: Price-first policy optimized for accepted trajectory cost.
+
+objective:
+  type: minimize_cost_per_accepted_trajectory
+  cost_first: true
+
+signals:
+  hard_constraints:
+    enabled: true
+    checks:
+      - context_window
+      - required_tools
+      - required_modalities
+      - schema_support
+      - safety_domain
+
+  local_rules:
+    enabled: true
+
+  semantic_classifier:
+    enabled: false
+    min_confidence: 0.75
+
+  llm_classifier:
+    enabled: false
+    max_cost_usd: 0.0001
+    require_positive_expected_value: true
+
+routing:
+  preserve_session_affinity: true
+  account_for_context_replay: true
+  prefer_reasoning_mode_change_before_model_switch: true
+  max_router_latency_ms: 50
+  max_router_cost_ratio: 0.01
+  uncertainty_margin: 0.10
+
+ranking:
+  primary: expected_trajectory_cost
+  tie_breakers:
+    - lower_uncertainty
+    - lower_fallback_tax
+    - session_affinity
+    - lower_latency
+    - higher_local_accept_rate
+
+constraints:
+  min_success_probability: 0.62
+  max_trajectory_cost_usd: 0.05
+  max_expected_latency_ms: 120000
+
+free_models:
+  require_smoke_test: true
+  require_task_family_profile: true
+  disallow_for_risk_levels:
+    - high
+    - critical
+
+recovery:
+  quality_escalation:
+    enabled: true
+    max_depth: 3
+
+  reliability_fallback:
+    enabled: true
+    max_depth: 2
+    prefer_same_model_other_provider: true
+
+  budget_fallback:
+    enabled: true
+
+validation:
+  deterministic_first: true
+  allow_same_profile_repair: true
+  allow_context_expansion: true
+  allow_live_llm_judge: true
+  max_live_judge_cost_usd: 0.001
+
+feedback:
+  recent_window_days: 7
+  stable_window_days: 30
+  min_samples_before_draft: 5
+  explicit_accept_weight: 1.0
+  explicit_reject_weight: -1.0
+  manual_replay_weight: -0.7
+  model_override_weight: -0.6
+  implicit_reask_weight: -0.4
+
+activation:
+  require_static_validation: true
+  require_golden_set_validation: true
+  require_explicit_user_activation: true
+
+kill_switch:
+  safety_failure: true
+  quality_regression_threshold: 0.05
+  reask_zscore_threshold: 2.0
+  routing_overhead_ratio_threshold: 0.01
+  accepted_trajectory_cost_regression_threshold: 0.10
