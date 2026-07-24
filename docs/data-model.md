@@ -80,6 +80,16 @@ CREATE TABLE schema_versions (
 );
 ```
 
+`workspace_versions` records the schema versions of generated configuration and policy defaults:
+
+```sql
+CREATE TABLE workspace_versions (
+  name TEXT PRIMARY KEY,
+  version TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
+
 ### 4.2 sessions
 
 ```sql

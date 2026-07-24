@@ -1,3 +1,4 @@
+schema_version: 1
 models:
   - id: openrouter/qwen/qwen3-coder-free
     provider: openrouter
