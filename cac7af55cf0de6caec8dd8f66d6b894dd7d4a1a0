@@ -1,0 +1,58 @@
+go.mod
+  s_7e1e5b55ce2d49::t_a77af1b1bd560a 4-5
+  s_7e1e5b55ce2d49::t_e8c4cce0f2fdf7 6-21
+internal/cli/init.go
+  s_7e1e5b55ce2d49::t_c230ce277a57ff 37-38
+  s_7e1e5b55ce2d49::t_a77af1b1bd560a 8-10,39-41,45,48,53
+internal/domain/system.go
+  s_7e1e5b55ce2d49::t_ea6ccf6e5037f6 1-13
+internal/application/workspace.go
+  s_7e1e5b55ce2d49::t_ea6ccf6e5037f6 1-87
+docs/data-model.md
+  s_7e1e5b55ce2d49::t_7e484e50571435 83-92
+internal/application/workspace_test.go
+  s_7e1e5b55ce2d49::t_7e484e50571435 1-6,8-72,74-110
+  s_7e1e5b55ce2d49::t_e6494e184520f4 7,73
+configs/user-profile.example.yaml
+  s_7e1e5b55ce2d49::t_c230ce277a57ff 1
+internal/infrastructure/sqlite.go
+  s_7e1e5b55ce2d49::t_a77af1b1bd560a 1-82
+configs/providers.example.yaml
+  s_7e1e5b55ce2d49::t_c230ce277a57ff 1
+configs/models.example.yaml
+  s_7e1e5b55ce2d49::t_c230ce277a57ff 1
+internal/infrastructure/system.go
+  s_7e1e5b55ce2d49::t_c230ce277a57ff 1-21
+README.md
+  s_7e1e5b55ce2d49::t_7e484e50571435 102
+docs/cli.md
+  s_7e1e5b55ce2d49::t_7e484e50571435 51-52
+configs/config.example.yaml
+  s_7e1e5b55ce2d49::t_c230ce277a57ff 1
+internal/infrastructure/workspace.go
+  s_7e1e5b55ce2d49::t_ea6ccf6e5037f6 1-22
+internal/infrastructure/sqlite_test.go
+  s_7e1e5b55ce2d49::t_7e484e50571435 1-21,23-39
+  s_7e1e5b55ce2d49::t_d007f543125909 22
+internal/application/defaults.go
+  s_7e1e5b55ce2d49::t_ea6ccf6e5037f6 3-4,103-104,135-136,205-206,247-248
+  s_7e1e5b55ce2d49::t_9cce9cf4150a8c 1
+go.sum
+  s_7e1e5b55ce2d49::t_2c1a5d2a109836 1-49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "cac7af55cf0de6caec8dd8f66d6b894dd7d4a1a0",
+  "prompts": {},
+  "sessions": {
+    "s_7e1e5b55ce2d49": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f92b3-b6b1-7071-8a6e-70bfd17d6206",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "xuwentao <cutenear1993@yahoo.com>"
+    }
+  }
+}
