@@ -80,7 +80,15 @@ CREATE TABLE schema_versions (
 );
 ```
 
-`grandet init` also records generated configuration and policy schema versions in `workspace_versions`. Each migration runs in its own transaction: a failed migration leaves neither its schema changes nor its version record behind.
+`workspace_versions` records the schema versions of generated configuration and policy defaults:
+
+```sql
+CREATE TABLE workspace_versions (
+  name TEXT PRIMARY KEY,
+  version TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+```
 
 ### 4.2 sessions
 

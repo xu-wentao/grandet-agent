@@ -55,6 +55,8 @@ Creates:
   logs/
 ```
 
+`init` applies SQLite migrations transactionally and records migration versions in `schema_versions`. Generated YAML files carry `schema_version: 1`; their recorded workspace versions are stored in SQLite. Re-running `init` preserves generated files, while `--force` refreshes only generated defaults and never removes unrelated files.
+
 ## 3. Configuration
 
 ```bash

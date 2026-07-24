@@ -2,12 +2,12 @@ package domain
 
 import "time"
 
-// Clock keeps time-dependent application behavior deterministic in tests.
+// Clock makes time-dependent application work deterministic in tests.
 type Clock interface {
 	Now() time.Time
 }
 
-// IDGenerator creates identifiers without coupling domain code to a UUID implementation.
+// IDGenerator provides stable identifiers without binding domain code to a generator.
 type IDGenerator interface {
-	NewID() string
+	New() string
 }

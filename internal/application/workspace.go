@@ -1,122 +1,87 @@
 package application
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
-	"sort"
 
 	"github.com/xu-wentao/grandet-agent/internal/domain"
 )
 
-const (
-	ConfigSchemaVersion = "v2"
-	PolicySchemaVersion = "stingy-v1"
-)
-
-type FileSystem interface {
+type WorkspaceFilesystem interface {
 	MkdirAll(path string) error
-	Exists(path string) (bool, error)
-	WriteFile(path, content string) error
+	WriteFile(path, content string, force bool) (created bool, err error)
 }
 
-type WorkspaceMigrator interface {
-	Migrate(ctx context.Context, databasePath string, versions WorkspaceVersions) error
+type WorkspaceDatabase interface {
+	Migrate(path string) error
+	RecordVersions(path string, versions map[string]string) error
 }
 
-type WorkspaceVersions struct {
-	Config string
-	Policy string
-	At     string
-}
-
-type InitRequest struct {
+type InitOptions struct {
 	Home   string
 	DryRun bool
 	Force  bool
 }
 
-type InitResult struct {
+type InitPlan struct {
 	Directories []string
 	Files       []string
-	Created     []string
-	Skipped     []string
 }
 
-type InitializeWorkspaceService struct {
-	Files    FileSystem
-	Migrator WorkspaceMigrator
-	Clock    domain.Clock
+type InitResult struct {
+	Plan    InitPlan
+	Created []string
 }
 
-func (s InitializeWorkspaceService) Initialize(ctx context.Context, request InitRequest) (InitResult, error) {
-	if request.Home == "" {
-		return InitResult{}, fmt.Errorf("workspace home is required")
-	}
-	if s.Files == nil || s.Migrator == nil || s.Clock == nil {
-		return InitResult{}, fmt.Errorf("workspace service dependencies are required")
-	}
+type WorkspaceInitializer struct {
+	filesystem WorkspaceFilesystem
+	database   WorkspaceDatabase
+	clock      domain.Clock
+	ids        domain.IDGenerator
+}
 
-	result := InitResult{Directories: workspaceDirectories(request.Home)}
-	files := workspaceFiles(request.Home)
-	for path := range files {
-		result.Files = append(result.Files, path)
-	}
-	result.Files = append(result.Files, filepath.Join(request.Home, "grandet.db"))
-	sort.Strings(result.Files)
-	if request.DryRun {
-		return result, nil
-	}
+func NewWorkspaceInitializer(filesystem WorkspaceFilesystem, database WorkspaceDatabase, clock domain.Clock, ids domain.IDGenerator) WorkspaceInitializer {
+	return WorkspaceInitializer{filesystem: filesystem, database: database, clock: clock, ids: ids}
+}
 
-	for _, path := range result.Directories {
-		if err := s.Files.MkdirAll(path); err != nil {
+func (s WorkspaceInitializer) Initialize(options InitOptions) (InitResult, error) {
+	plan := workspacePlan(options.Home)
+	if options.DryRun {
+		return InitResult{Plan: plan}, nil
+	}
+	for _, path := range plan.Directories {
+		if err := s.filesystem.MkdirAll(path); err != nil {
 			return InitResult{}, fmt.Errorf("create dir %s: %w", path, err)
 		}
 	}
-	for path, content := range files {
-		exists, err := s.Files.Exists(path)
+	created := make([]string, 0, len(defaultFiles(options.Home)))
+	for path, content := range defaultFiles(options.Home) {
+		wrote, err := s.filesystem.WriteFile(path, content, options.Force)
 		if err != nil {
-			return InitResult{}, fmt.Errorf("check file %s: %w", path, err)
-		}
-		if exists && !request.Force {
-			result.Skipped = append(result.Skipped, path)
-			continue
-		}
-		if err := s.Files.WriteFile(path, content); err != nil {
 			return InitResult{}, fmt.Errorf("write file %s: %w", path, err)
 		}
-		result.Created = append(result.Created, path)
+		if wrote {
+			created = append(created, path)
+		}
 	}
-	if err := s.Migrator.Migrate(ctx, filepath.Join(request.Home, "grandet.db"), WorkspaceVersions{
-		Config: ConfigSchemaVersion,
-		Policy: PolicySchemaVersion,
-		At:     s.Clock.Now().UTC().Format("2006-01-02T15:04:05Z"),
-	}); err != nil {
+	databasePath := filepath.Join(options.Home, "grandet.db")
+	if err := s.database.Migrate(databasePath); err != nil {
 		return InitResult{}, fmt.Errorf("migrate database: %w", err)
 	}
-	return result, nil
+	if err := s.database.RecordVersions(databasePath, workspaceVersions()); err != nil {
+		return InitResult{}, fmt.Errorf("record workspace versions: %w", err)
+	}
+	return InitResult{Plan: plan, Created: created}, nil
 }
 
-func workspaceDirectories(home string) []string {
-	return []string{
-		home,
-		filepath.Join(home, "logs"),
-		filepath.Join(home, "traces"),
-		filepath.Join(home, "cache"),
-		filepath.Join(home, "policies"),
-		filepath.Join(home, "evals"),
-		filepath.Join(home, "evals", "golden"),
-		filepath.Join(home, "evals", "regression"),
-		filepath.Join(home, "evals", "safety"),
-	}
+func workspacePlan(home string) InitPlan {
+	return InitPlan{Directories: []string{home, filepath.Join(home, "logs"), filepath.Join(home, "traces"), filepath.Join(home, "cache"), filepath.Join(home, "policies"), filepath.Join(home, "evals"), filepath.Join(home, "evals", "golden"), filepath.Join(home, "evals", "regression"), filepath.Join(home, "evals", "safety")}, Files: []string{filepath.Join(home, "config.yaml"), filepath.Join(home, "providers.yaml"), filepath.Join(home, "models.yaml"), filepath.Join(home, "user-profile.yaml"), filepath.Join(home, "policies", "stingy-v1.yaml"), filepath.Join(home, "grandet.db")}}
 }
 
-func workspaceFiles(home string) map[string]string {
-	return map[string]string{
-		filepath.Join(home, "config.yaml"):                DefaultConfigYAML,
-		filepath.Join(home, "providers.yaml"):             DefaultProvidersYAML,
-		filepath.Join(home, "models.yaml"):                DefaultModelsYAML,
-		filepath.Join(home, "user-profile.yaml"):          DefaultUserProfileYAML,
-		filepath.Join(home, "policies", "stingy-v1.yaml"): DefaultPolicyYAML,
-	}
+func defaultFiles(home string) map[string]string {
+	return map[string]string{filepath.Join(home, "config.yaml"): defaultConfigYAML, filepath.Join(home, "providers.yaml"): defaultProvidersYAML, filepath.Join(home, "models.yaml"): defaultModelsYAML, filepath.Join(home, "user-profile.yaml"): defaultUserProfileYAML, filepath.Join(home, "policies", "stingy-v1.yaml"): defaultPolicyYAML}
+}
+
+func workspaceVersions() map[string]string {
+	return map[string]string{"config": "1", "providers": "1", "models": "1", "user-profile": "1", "policy": "1"}
 }

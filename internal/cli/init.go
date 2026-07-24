@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -9,7 +8,6 @@ import (
 
 	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
-	"github.com/xu-wentao/grandet-agent/internal/infrastructure/sqlite"
 )
 
 func runInit(args []string) error {
@@ -36,30 +34,24 @@ func runInit(args []string) error {
 		home = filepath.Join(userHome, ".grandet")
 	}
 
-	service := application.InitializeWorkspaceService{
-		Files:    infrastructure.FileSystem{},
-		Migrator: sqlite.Migrator{},
-		Clock:    infrastructure.Clock{},
-	}
-	result, err := service.Initialize(context.Background(), application.InitRequest{Home: home, DryRun: dryRun, Force: force})
+	clock := infrastructure.Clock{}
+	initializer := application.NewWorkspaceInitializer(infrastructure.Filesystem{}, infrastructure.NewSQLiteMigrator(clock), clock, infrastructure.IDGenerator{})
+	result, err := initializer.Initialize(application.InitOptions{Home: home, DryRun: dryRun, Force: force})
 	if err != nil {
 		return err
 	}
 	if dryRun {
 		fmt.Println("GrandetAgent init dry run")
-		for _, p := range result.Directories {
+		for _, p := range result.Plan.Directories {
 			fmt.Printf("create dir: %s\n", p)
 		}
-		for _, p := range result.Files {
+		for _, p := range result.Plan.Files {
 			fmt.Printf("create file: %s\n", p)
 		}
 		return nil
 	}
 	for _, p := range result.Created {
 		fmt.Printf("created file: %s\n", p)
-	}
-	for _, p := range result.Skipped {
-		fmt.Printf("skip existing file: %s\n", p)
 	}
 
 	fmt.Printf("GrandetAgent workspace initialized at %s\n", home)

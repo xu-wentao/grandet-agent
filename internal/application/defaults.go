@@ -1,6 +1,6 @@
 package application
 
-const DefaultConfigYAML = `schema_version: v2
+const defaultConfigYAML = `schema_version: 1
 version: v2
 
 strategy:
@@ -100,8 +100,7 @@ golden_set:
   require_acceptance_criteria: true
 `
 
-const DefaultProvidersYAML = `schema_version: v1
-
+const defaultProvidersYAML = `schema_version: 1
 providers:
   openrouter:
     type: openai_compatible
@@ -133,8 +132,7 @@ providers:
     enabled: false
 `
 
-const DefaultModelsYAML = `schema_version: v1
-
+const defaultModelsYAML = `schema_version: 1
 models:
   - id: openrouter/qwen/qwen3-coder-free
     provider: openrouter
@@ -204,8 +202,7 @@ execution_profiles:
     tool_calling: true
 `
 
-const DefaultUserProfileYAML = `schema_version: v1
-
+const defaultUserProfileYAML = `schema_version: 1
 user:
   id: local
   profile_version: v2
@@ -247,8 +244,7 @@ task_tolerance:
     sample_count: 0
 `
 
-const DefaultPolicyYAML = `schema_version: stingy-v1
-
+const defaultPolicyYAML = `schema_version: 1
 metadata:
   name: stingy
   version: stingy-v1
