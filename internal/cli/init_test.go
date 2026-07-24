@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -61,8 +62,23 @@ func TestInitPreservesFilesUnlessForced(t *testing.T) {
 	if err := runInit([]string{"--home", home, "--force"}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := os.ReadFile(config); err != nil || string(got) == "user: value\n" {
-		t.Fatalf("config after force = %q, %v", got, err)
+	for path, settings := range map[string][]string{
+		"config.yaml": {
+			"cost_accounting:\n", "free_models:\n", "feedback:\n", "shadow_eval:\n", "golden_set:\n",
+		},
+		"models.yaml":             {"      - documentation\n      - summarization\n      - chinese\n"},
+		"user-profile.yaml":       {"  - task_family: summarization\n"},
+		"policies/stingy-v1.yaml": {"  prefer_reasoning_mode_change_before_model_switch: true\n"},
+	} {
+		got, err := os.ReadFile(filepath.Join(home, path))
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, setting := range settings {
+			if !strings.Contains(string(got), setting) {
+				t.Fatalf("%s after force missing %q", path, setting)
+			}
+		}
 	}
 	if got, err := os.ReadFile(unrelated); err != nil || string(got) != "keep: me\n" {
 		t.Fatalf("unrelated file = %q, %v", got, err)
