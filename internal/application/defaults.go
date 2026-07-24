@@ -1,6 +1,7 @@
-package cli
+package application
 
-const defaultConfigYAML = `version: v2
+const defaultConfigYAML = `schema_version: 1
+version: v2
 
 strategy:
   name: stingy
@@ -99,7 +100,8 @@ golden_set:
   require_acceptance_criteria: true
 `
 
-const defaultProvidersYAML = `providers:
+const defaultProvidersYAML = `schema_version: 1
+providers:
   openrouter:
     type: openai_compatible
     base_url: https://openrouter.ai/api/v1
@@ -130,7 +132,8 @@ const defaultProvidersYAML = `providers:
     enabled: false
 `
 
-const defaultModelsYAML = `models:
+const defaultModelsYAML = `schema_version: 1
+models:
   - id: openrouter/qwen/qwen3-coder-free
     provider: openrouter
     upstream_name: qwen3-coder-free
@@ -199,7 +202,8 @@ execution_profiles:
     tool_calling: true
 `
 
-const defaultUserProfileYAML = `user:
+const defaultUserProfileYAML = `schema_version: 1
+user:
   id: local
   profile_version: v2
 
@@ -240,7 +244,8 @@ task_tolerance:
     sample_count: 0
 `
 
-const defaultPolicyYAML = `metadata:
+const defaultPolicyYAML = `schema_version: 1
+metadata:
   name: stingy
   version: stingy-v1
   status: DRAFT
