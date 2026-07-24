@@ -1,10 +1,15 @@
 package cli
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/xu-wentao/grandet-agent/internal/application"
+	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
+	"github.com/xu-wentao/grandet-agent/internal/infrastructure/sqlite"
 )
 
 func runInit(args []string) error {
@@ -31,52 +36,30 @@ func runInit(args []string) error {
 		home = filepath.Join(userHome, ".grandet")
 	}
 
-	paths := []string{
-		home,
-		filepath.Join(home, "logs"),
-		filepath.Join(home, "traces"),
-		filepath.Join(home, "cache"),
-		filepath.Join(home, "policies"),
-		filepath.Join(home, "evals"),
-		filepath.Join(home, "evals", "golden"),
-		filepath.Join(home, "evals", "regression"),
-		filepath.Join(home, "evals", "safety"),
+	service := application.InitializeWorkspaceService{
+		Files:    infrastructure.FileSystem{},
+		Migrator: sqlite.Migrator{},
+		Clock:    infrastructure.Clock{},
 	}
-
-	files := map[string]string{
-		filepath.Join(home, "config.yaml"):               defaultConfigYAML,
-		filepath.Join(home, "providers.yaml"):            defaultProvidersYAML,
-		filepath.Join(home, "models.yaml"):               defaultModelsYAML,
-		filepath.Join(home, "user-profile.yaml"):         defaultUserProfileYAML,
-		filepath.Join(home, "policies", "stingy-v1.yaml"): defaultPolicyYAML,
+	result, err := service.Initialize(context.Background(), application.InitRequest{Home: home, DryRun: dryRun, Force: force})
+	if err != nil {
+		return err
 	}
-
 	if dryRun {
 		fmt.Println("GrandetAgent init dry run")
-		for _, p := range paths {
+		for _, p := range result.Directories {
 			fmt.Printf("create dir: %s\n", p)
 		}
-		for p := range files {
+		for _, p := range result.Files {
 			fmt.Printf("create file: %s\n", p)
 		}
 		return nil
 	}
-
-	for _, p := range paths {
-		if err := os.MkdirAll(p, 0o755); err != nil {
-			return fmt.Errorf("create dir %s: %w", p, err)
-		}
-	}
-
-	for p, content := range files {
-		if _, err := os.Stat(p); err == nil && !force {
-			fmt.Printf("skip existing file: %s\n", p)
-			continue
-		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
-			return fmt.Errorf("write file %s: %w", p, err)
-		}
+	for _, p := range result.Created {
 		fmt.Printf("created file: %s\n", p)
+	}
+	for _, p := range result.Skipped {
+		fmt.Printf("skip existing file: %s\n", p)
 	}
 
 	fmt.Printf("GrandetAgent workspace initialized at %s\n", home)

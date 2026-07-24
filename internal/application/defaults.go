@@ -1,6 +1,6 @@
-package cli
+package application
 
-const defaultConfigYAML = `version: v2
+const DefaultConfigYAML = `schema_version: v2
 
 strategy:
   name: stingy
@@ -43,42 +43,16 @@ runtime:
   default_timeout_seconds: 120
   stream: true
 
-privacy:
-  store_raw_prompts: false
-  allow_shadow_eval_for_user_tasks: false
-  require_confirm_before_using_free_models: false
-  redact_before_eval: true
-
 budget:
   daily_limit_usd: 1.00
   trajectory_default_limit_usd: 0.05
   shadow_eval_daily_limit_usd: 0.20
 
-cost_accounting:
-  track_routing_cost: true
-  track_raw_call_cost: true
-  track_trajectory_total_cost: true
-  track_successful_trajectory_cost: true
-  track_accepted_trajectory_cost: true
-  track_wasted_cost: true
-  track_fallback_tax: true
-  track_context_replay_tax: true
-  track_reasoning_tokens: true
-
-free_models:
-  allow_for_real_tasks: true
-  require_smoke_test: true
-  require_task_family_profile: true
-  max_consecutive_failures: 3
-  auto_degrade_on_rate_limit: true
-
-feedback:
-  ask_after_run: false
-  detect_implicit_reask: true
-  default_if_skipped: neutral
-  recent_window_days: 7
-  stable_window_days: 30
-  min_samples_before_policy_draft: 5
+privacy:
+  store_raw_prompts: false
+  allow_shadow_eval_for_user_tasks: false
+  require_confirm_before_using_free_models: false
+  redact_before_eval: true
 
 policy:
   require_static_validation: true
@@ -87,19 +61,11 @@ policy:
   rollback_on_safety_failure: true
   quality_regression_threshold: 0.05
   reask_zscore_threshold: 2.0
-
-shadow_eval:
-  enabled: false
-  max_daily_budget_usd: 0.20
-  prefer_free_models: true
-  redact_before_eval: true
-
-golden_set:
-  directory: ~/.grandet/evals/golden
-  require_acceptance_criteria: true
 `
 
-const defaultProvidersYAML = `providers:
+const DefaultProvidersYAML = `schema_version: v1
+
+providers:
   openrouter:
     type: openai_compatible
     base_url: https://openrouter.ai/api/v1
@@ -130,7 +96,9 @@ const defaultProvidersYAML = `providers:
     enabled: false
 `
 
-const defaultModelsYAML = `models:
+const DefaultModelsYAML = `schema_version: v1
+
+models:
   - id: openrouter/qwen/qwen3-coder-free
     provider: openrouter
     upstream_name: qwen3-coder-free
@@ -142,8 +110,6 @@ const defaultModelsYAML = `models:
       - code_generation
       - debugging
       - documentation
-      - summarization
-      - chinese
 
   - id: deepseek/deepseek-chat
     provider: deepseek
@@ -199,7 +165,9 @@ execution_profiles:
     tool_calling: true
 `
 
-const defaultUserProfileYAML = `user:
+const DefaultUserProfileYAML = `schema_version: v1
+
+user:
   id: local
   profile_version: v2
 
@@ -231,16 +199,11 @@ task_tolerance:
     min_success_probability: 0.82
     preferred_price_quantile: 0.25
     sample_count: 0
-
-  - task_family: summarization
-    difficulty: 2
-    domain: general
-    min_success_probability: 0.60
-    preferred_price_quantile: 0.05
-    sample_count: 0
 `
 
-const defaultPolicyYAML = `metadata:
+const DefaultPolicyYAML = `schema_version: stingy-v1
+
+metadata:
   name: stingy
   version: stingy-v1
   status: DRAFT
@@ -262,7 +225,6 @@ signals:
 routing:
   preserve_session_affinity: true
   account_for_context_replay: true
-  prefer_reasoning_mode_change_before_model_switch: true
   max_router_latency_ms: 50
   max_router_cost_ratio: 0.01
 

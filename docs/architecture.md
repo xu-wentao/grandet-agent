@@ -363,6 +363,8 @@ The CLI is the first-version user interface.
 
 It parses commands, renders output, and invokes application services. It must not contain routing or learning rules.
 
+The foundation follows the same direction in code: `internal/cli` constructs application services, `internal/application` owns initialization orchestration and ports, `internal/domain` exposes time and ID ports, and `internal/infrastructure` provides filesystem, clock, and SQLite adapters. Dependencies point inward; domain imports neither filesystem nor SQL code.
+
 ### 7.2 Session Manager
 
 Responsibilities:
