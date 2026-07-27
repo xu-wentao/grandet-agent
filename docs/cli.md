@@ -31,6 +31,13 @@ grandet init --home ./tmp/.grandet
 
 Creates:
 
+- `config.yaml`, `providers.yaml`, `models.yaml`, and `user-profile.yaml` with an explicit `schema_version`
+- `policies/stingy-v1.yaml` with its policy schema version
+- `evals/golden/`, `evals/regression/`, and `evals/safety/`
+- `grandet.db`, after transactional SQLite migrations
+
+`--dry-run` lists every directory and file, including the database. Re-running initialization preserves generated files; `--force` refreshes only generated defaults and never removes unrelated files.
+
 ```text
 ~/.grandet/
   config.yaml
