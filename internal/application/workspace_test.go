@@ -1,3 +1,5 @@
+//go:build integration
+
 package application_test
 
 import (
@@ -10,19 +12,12 @@ import (
 
 	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
+	"github.com/xu-wentao/grandet-agent/internal/testutil"
 )
 
-type fixedClock struct{}
-
-func (fixedClock) Now() time.Time { return time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC) }
-
-type fixedIDs struct{}
-
-func (fixedIDs) New() string { return "test-id" }
-
 func initializer() application.WorkspaceInitializer {
-	clock := fixedClock{}
-	return application.NewWorkspaceInitializer(infrastructure.Filesystem{}, infrastructure.NewSQLiteMigrator(clock), clock, fixedIDs{})
+	clock := testutil.FixedClock{Time: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	return application.NewWorkspaceInitializer(infrastructure.Filesystem{}, infrastructure.NewSQLiteMigrator(clock), clock, testutil.FixedIDGenerator{ID: "test-id"})
 }
 
 func TestWorkspaceInitialization(t *testing.T) {
