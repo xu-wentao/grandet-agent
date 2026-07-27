@@ -3,6 +3,8 @@ package infrastructure
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/xu-wentao/grandet-agent/internal/application"
 )
 
 type Filesystem struct{}
@@ -20,3 +22,5 @@ func (Filesystem) WriteFile(path, content string, force bool) (bool, error) {
 	}
 	return true, os.WriteFile(path, []byte(content), 0o644)
 }
+
+var _ application.WorkspaceFilesystem = Filesystem{}
