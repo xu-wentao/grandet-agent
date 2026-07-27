@@ -1,0 +1,19 @@
+internal/architecture/conformance_test.go
+  s_4b61478c8f7e50::t_1c8986456ba108 36-39,55-66,68-75,79-82
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "8178455ef58a4f843ff2279139134ab53d653768",
+  "prompts": {},
+  "sessions": {
+    "s_4b61478c8f7e50": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa0ee-fd42-71d3-89b8-f0bdda0dceaa",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "xuwentao <cutenear1993@yahoo.com>"
+    }
+  }
+}
