@@ -1,0 +1,24 @@
+internal/infrastructure/sqlite_test.go
+  s_d91eacf4176c97::t_16c725b81e5b99 40-60
+docs/cli.md
+  s_d91eacf4176c97::t_16c725b81e5b99 58
+internal/cli/init_test.go
+  s_d91eacf4176c97::t_16c725b81e5b99 1-25,27-29,36-42,45-76
+  s_d91eacf4176c97::t_962d3cccda2ecb 26,30-35,43-44
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "42daed139b4334ca91265f82d643028807bb105d",
+  "prompts": {},
+  "sessions": {
+    "s_d91eacf4176c97": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa086-5c77-7c72-b601-f86299f8e11f",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "xuwentao <cutenear1993@yahoo.com>"
+    }
+  }
+}

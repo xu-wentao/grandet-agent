@@ -1,0 +1,44 @@
+internal/testkit/fakes_test.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 1-24,29
+  s_7a241e95c7edc3::t_74d5662c634165 25-28
+Makefile
+  s_7a241e95c7edc3::t_e6a805fdf3a937 1,12-16
+  s_7a241e95c7edc3::t_71c4205fb511e7 17
+.github/workflows/ci.yaml
+  s_7a241e95c7edc3::t_e6a805fdf3a937 35-40
+internal/infrastructure/workspace.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 6-7,12
+  s_7a241e95c7edc3::t_2335511e6bb698 13
+internal/infrastructure/sqlite.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 9,24
+  s_7a241e95c7edc3::t_22d8d57fd88b59 25
+internal/testkit/fakes.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 1-32
+internal/infrastructure/system.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 7-8,13-14,19
+  s_7a241e95c7edc3::t_4c73a3c4fb134f 20
+docs/architecture.md
+  s_7a241e95c7edc3::t_e6a805fdf3a937 19-26
+  s_7a241e95c7edc3::t_74d5662c634165 27-28
+internal/infrastructure/sqlite_test.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 1-2
+internal/conformance/dependencies_test.go
+  s_7a241e95c7edc3::t_e6a805fdf3a937 1-46
+  s_7a241e95c7edc3::t_74d5662c634165 47-64
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "5618e2725337b36a62407541b0cdede93d8d53be",
+  "prompts": {},
+  "sessions": {
+    "s_7a241e95c7edc3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa0c7-6a3f-7122-81a6-546d2ec2c8be",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "xuwentao <cutenear1993@yahoo.com>"
+    }
+  }
+}
