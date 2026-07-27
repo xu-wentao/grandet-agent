@@ -1,0 +1,42 @@
+internal/infrastructure/sqlite_test.go
+  s_4b61478c8f7e50::t_7080f6d43c6457 1-2
+internal/application/workspace_test.go
+  s_4b61478c8f7e50::t_7080f6d43c6457 1-2
+  s_4b61478c8f7e50::t_8b2ed901c41446 15,19-20
+Makefile
+  s_4b61478c8f7e50::t_8b2ed901c41446 1,10-13,16-18,22-31
+  s_4b61478c8f7e50::t_4c6675d46bc9ff 32
+docs/architecture.md
+  s_4b61478c8f7e50::t_8b2ed901c41446 803-810
+internal/testutil/system.go
+  s_4b61478c8f7e50::t_8b2ed901c41446 1-23
+internal/infrastructure/sqlite.go
+  s_4b61478c8f7e50::t_8b2ed901c41446 9,84-85
+.github/workflows/ci.yaml
+  s_4b61478c8f7e50::t_8b2ed901c41446 29-38,40-41
+internal/architecture/conformance_test.go
+  s_4b61478c8f7e50::t_7c05639f01239f 79
+  s_4b61478c8f7e50::t_64295f050aae89 17-19,21-23,25,38,41,50,58-60
+  s_4b61478c8f7e50::t_a3c73adb9d5a6c 6,16,20,24,26-32,36-37,39,42-47,53,55,64,67,72
+  s_4b61478c8f7e50::t_8b2ed901c41446 1-5,7-15,33-35,40,48-49,51-52,54,56-57,61-63,65-66,68-71,73-78,80-97
+internal/infrastructure/system.go
+  s_4b61478c8f7e50::t_8b2ed901c41446 7-8,24-26
+internal/infrastructure/workspace.go
+  s_4b61478c8f7e50::t_8b2ed901c41446 6-7,25-26
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.14",
+  "base_commit_sha": "fd47e756dd5fb2fe251b32c0e26f0d50ffd7c45f",
+  "prompts": {},
+  "sessions": {
+    "s_4b61478c8f7e50": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fa0ee-fd42-71d3-89b8-f0bdda0dceaa",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "xuwentao <cutenear1993@yahoo.com>"
+    }
+  }
+}
