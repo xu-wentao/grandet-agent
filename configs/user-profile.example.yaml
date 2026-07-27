@@ -38,10 +38,3 @@ task_tolerance:
     min_success_probability: 0.60
     preferred_price_quantile: 0.05
     sample_count: 0
-
-  - task_family: extraction
-    difficulty: 2
-    domain: general
-    min_success_probability: 0.72
-    preferred_price_quantile: 0.10
-    sample_count: 0

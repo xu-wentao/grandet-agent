@@ -20,6 +20,13 @@ type fixedIDs struct{}
 
 func (fixedIDs) New() string { return "test-id" }
 
+type incrementingClock struct{ now time.Time }
+
+func (c *incrementingClock) Now() time.Time {
+	c.now = c.now.Add(time.Second)
+	return c.now
+}
+
 func initializer() application.WorkspaceInitializer {
 	clock := fixedClock{}
 	return application.NewWorkspaceInitializer(infrastructure.Filesystem{}, infrastructure.NewSQLiteMigrator(clock), clock, fixedIDs{})
@@ -79,6 +86,24 @@ func TestWorkspaceInitialization(t *testing.T) {
 	})
 }
 
+func TestWorkspaceInitializationRepeatKeepsVersionTimestamps(t *testing.T) {
+	home := filepath.Join(t.TempDir(), ".grandet")
+	clock := &incrementingClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	service := application.NewWorkspaceInitializer(infrastructure.Filesystem{}, infrastructure.NewSQLiteMigrator(clock), clock, fixedIDs{})
+	if _, err := service.Initialize(application.InitOptions{Home: home}); err != nil {
+		t.Fatal(err)
+	}
+
+	databasePath := filepath.Join(home, "grandet.db")
+	before := versionTimestamp(t, databasePath, "config")
+	if _, err := service.Initialize(application.InitOptions{Home: home}); err != nil {
+		t.Fatal(err)
+	}
+	if after := versionTimestamp(t, databasePath, "config"); after != before {
+		t.Fatalf("config version timestamp changed on repeat init: %q != %q", after, before)
+	}
+}
+
 func TestWorkspaceInitializationDryRun(t *testing.T) {
 	home := filepath.Join(t.TempDir(), ".grandet")
 	result, err := initializer().Initialize(application.InitOptions{Home: home, DryRun: true})
@@ -107,4 +132,18 @@ func assertVersions(t *testing.T, path string) {
 	if err := db.QueryRow(`SELECT COUNT(*) FROM workspace_versions`).Scan(&versions); err != nil || versions != 5 {
 		t.Fatalf("workspace versions = %d, %v", versions, err)
 	}
+}
+
+func versionTimestamp(t *testing.T, path, name string) string {
+	t.Helper()
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var timestamp string
+	if err := db.QueryRow(`SELECT updated_at FROM workspace_versions WHERE name = ?`, name).Scan(&timestamp); err != nil {
+		t.Fatal(err)
+	}
+	return timestamp
 }
