@@ -55,7 +55,7 @@ Creates:
   logs/
 ```
 
-`init` applies SQLite migrations transactionally and records migration versions in `schema_versions`. Generated YAML files carry `schema_version: 1`; their recorded workspace versions are stored in SQLite. Re-running `init` preserves generated files, while `--force` refreshes only generated defaults and never removes unrelated files.
+`init` applies SQLite migrations transactionally and records migration versions in `schema_versions`. A failed migration rolls back both its schema changes and version record; a later `init` reruns only pending migrations. Generated YAML files carry `schema_version: 1`; their recorded workspace versions are stored in SQLite. Re-running `init` preserves generated files, while `--force` refreshes only generated defaults and never removes unrelated files or resets `grandet.db`.
 
 ## 3. Configuration
 
