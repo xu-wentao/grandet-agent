@@ -37,3 +37,24 @@ func TestSQLiteMigrationRollback(t *testing.T) {
 		t.Fatalf("migration changes were not rolled back: %t, %v", exists, err)
 	}
 }
+
+func TestSQLiteMigrationCanRerun(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "grandet.db")
+	migrator := NewSQLiteMigrator(testClock{})
+	if err := migrator.Migrate(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrator.Migrate(path); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_versions`).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("migration records = %d, %v", count, err)
+	}
+}
