@@ -33,7 +33,10 @@ func TestArchitectureConformance(t *testing.T) {
 }
 
 func TestDomainDependencyRuleRejectsForbiddenImports(t *testing.T) {
-	directory := t.TempDir()
+	directory := filepath.Join(t.TempDir(), "nested")
+	if err := os.Mkdir(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	filename := filepath.Join(directory, "forbidden.go")
 	if err := os.WriteFile(filename, []byte("package domain\n\nimport \"os\"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -48,26 +51,35 @@ func TestDomainDependencyRuleRejectsForbiddenImports(t *testing.T) {
 }
 
 func forbiddenImports(directory string, forbidden func(string) bool, includeTests bool) ([]string, error) {
-	packages, err := parser.ParseDir(token.NewFileSet(), directory, nil, parser.ImportsOnly)
-	if err != nil {
-		return nil, err
-	}
 	var violations []string
-	for _, pkg := range packages {
-		for filename, file := range pkg.Files {
-			if !includeTests && strings.HasSuffix(filename, "_test.go") {
-				continue
-			}
-			for _, spec := range file.Imports {
-				importPath, err := strconv.Unquote(spec.Path.Value)
-				if err != nil {
-					return nil, err
+	err := filepath.Walk(directory, func(path string, info os.FileInfo, err error) error {
+		if err != nil || !info.IsDir() {
+			return err
+		}
+		packages, err := parser.ParseDir(token.NewFileSet(), path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, pkg := range packages {
+			for filename, file := range pkg.Files {
+				if !includeTests && strings.HasSuffix(filename, "_test.go") {
+					continue
 				}
-				if forbidden(importPath) {
-					violations = append(violations, filename+" imports forbidden dependency "+strconv.Quote(importPath))
+				for _, spec := range file.Imports {
+					importPath, err := strconv.Unquote(spec.Path.Value)
+					if err != nil {
+						return err
+					}
+					if forbidden(importPath) {
+						violations = append(violations, filename+" imports forbidden dependency "+strconv.Quote(importPath))
+					}
 				}
 			}
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 	return violations, nil
 }
