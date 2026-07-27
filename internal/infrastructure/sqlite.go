@@ -69,7 +69,7 @@ func (m SQLiteMigrator) RecordVersions(path string, versions map[string]string) 
 	}
 	defer db.Close()
 	for name, version := range versions {
-		if _, err := db.Exec(`INSERT INTO workspace_versions(name, version, updated_at) VALUES(?, ?, ?) ON CONFLICT(name) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at`, name, version, m.clock.Now().UTC().Format(time.RFC3339Nano)); err != nil {
+		if _, err := db.Exec(`INSERT INTO workspace_versions(name, version, updated_at) VALUES(?, ?, ?) ON CONFLICT(name) DO UPDATE SET version = excluded.version, updated_at = excluded.updated_at WHERE workspace_versions.version <> excluded.version`, name, version, m.clock.Now().UTC().Format(time.RFC3339Nano)); err != nil {
 			return err
 		}
 	}
