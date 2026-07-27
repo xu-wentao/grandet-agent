@@ -111,6 +111,8 @@ go run ./cmd/grandet --help
 go run ./cmd/grandet init --dry-run
 ```
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for package boundaries, issue and PR conventions, and the [release checklist](docs/release-checklist.md) for MVP readiness.
+
 ## License
 
 Apache-2.0
