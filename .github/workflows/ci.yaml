@@ -32,5 +32,11 @@ jobs:
       - name: Test
         run: go test ./...
 
+      - name: Integration test
+        run: go test -tags=integration ./internal/infrastructure
+
+      - name: Static analysis
+        run: go vet ./...
+
       - name: Build
         run: go build ./cmd/grandet

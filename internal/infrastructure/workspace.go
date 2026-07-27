@@ -3,9 +3,13 @@ package infrastructure
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/xu-wentao/grandet-agent/internal/application"
 )
 
 type Filesystem struct{}
+
+var _ application.WorkspaceFilesystem = Filesystem{}
 
 func (Filesystem) MkdirAll(path string) error { return os.MkdirAll(path, 0o755) }
 

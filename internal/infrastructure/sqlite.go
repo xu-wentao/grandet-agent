@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/domain"
 	_ "modernc.org/sqlite"
 )
@@ -19,6 +20,8 @@ type SQLiteMigrator struct {
 	clock      domain.Clock
 	migrations []Migration
 }
+
+var _ application.WorkspaceDatabase = SQLiteMigrator{}
 
 func NewSQLiteMigrator(clock domain.Clock) SQLiteMigrator {
 	return SQLiteMigrator{clock: clock, migrations: []Migration{{Version: 1, Up: createWorkspaceVersions}}}
