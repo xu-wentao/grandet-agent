@@ -1,8 +1,10 @@
 package architecture_test
 
 import (
+	"fmt"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,7 +25,11 @@ func TestPackageDependencies(t *testing.T) {
 	}
 
 	for name, forbidden := range rules {
-		for _, path := range packageImports(t, filepath.Join(root, "internal", name)) {
+		imports, err := packageImports(filepath.Join(root, "internal", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range imports {
 			if forbidden(path) {
 				t.Errorf("internal/%s must not import %q", name, path)
 			}
@@ -32,15 +38,18 @@ func TestPackageDependencies(t *testing.T) {
 }
 
 func TestForbiddenDomainImports(t *testing.T) {
-	for _, path := range []string{"database/sql", "os", "io/fs", "path/filepath", "modernc.org/sqlite", module + "/internal/cli"} {
+	for _, path := range []string{"database/sql", "os", "io/fs", "path/filepath", "modernc.org/sqlite", "github.com/vendor/sdk", module + "/internal/cli"} {
 		if !forbiddenDomainImport(path) {
 			t.Errorf("%q must be forbidden in domain", path)
 		}
 	}
+	if forbiddenDomainImport("fmt") {
+		t.Error("stdlib imports must be allowed in domain")
+	}
 }
 
 func forbiddenDomainImport(path string) bool {
-	return path == "database/sql" || path == "os" || path == "io/fs" || path == "path/filepath" || strings.HasPrefix(path, "modernc.org/") || strings.HasPrefix(path, module+"/internal/")
+	return path == "database/sql" || path == "os" || path == "io/fs" || path == "path/filepath" || strings.Contains(path, ".")
 }
 
 func forbiddenCLIImport(path string) bool {
@@ -50,11 +59,25 @@ func forbiddenCLIImport(path string) bool {
 	return path != module+"/internal/application" && path != module+"/internal/infrastructure"
 }
 
-func packageImports(t *testing.T, dir string) []string {
-	t.Helper()
+func TestRepositoryRoot(t *testing.T) {
+	if _, err := os.Stat(filepath.Join(repositoryRoot(t), "go.mod")); err != nil {
+		t.Fatalf("repository root must contain go.mod: %v", err)
+	}
+}
+
+func TestPackageImportsRejectsEmptyLayer(t *testing.T) {
+	if _, err := packageImports(t.TempDir()); err == nil {
+		t.Error("missing layer must fail conformance check")
+	}
+}
+
+func packageImports(dir string) ([]string, error) {
 	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
 	if err != nil {
-		t.Fatal(err)
+		return nil, err
+	}
+	if len(files) == 0 {
+		return nil, fmt.Errorf("no Go files in expected layer %s", dir)
 	}
 	var imports []string
 	for _, name := range files {
@@ -63,13 +86,13 @@ func packageImports(t *testing.T, dir string) []string {
 		}
 		file, err := parser.ParseFile(token.NewFileSet(), name, nil, parser.ImportsOnly)
 		if err != nil {
-			t.Fatal(err)
+			return nil, err
 		}
 		for _, spec := range file.Imports {
 			imports = append(imports, strings.Trim(spec.Path.Value, "\""))
 		}
 	}
-	return imports
+	return imports, nil
 }
 
 func repositoryRoot(t *testing.T) string {
@@ -78,5 +101,5 @@ func repositoryRoot(t *testing.T) string {
 	if !ok {
 		t.Fatal("locate conformance test")
 	}
-	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
 }

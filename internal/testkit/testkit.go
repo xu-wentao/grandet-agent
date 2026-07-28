@@ -2,6 +2,7 @@
 package testkit
 
 import (
+	"context"
 	"time"
 
 	"github.com/xu-wentao/grandet-agent/internal/application"
@@ -15,6 +16,51 @@ func (c FixedClock) Now() time.Time { return c.Time }
 type FixedIDGenerator struct{ ID string }
 
 func (g FixedIDGenerator) New() string { return g.ID }
+
+// FakeProvider records Execute calls and delegates results to ExecuteFunc.
+type FakeProvider[Request, Response any] struct {
+	ExecuteFunc func(context.Context, Request) (Response, error)
+	Requests    []Request
+}
+
+func (f *FakeProvider[Request, Response]) Execute(ctx context.Context, request Request) (Response, error) {
+	f.Requests = append(f.Requests, request)
+	if f.ExecuteFunc != nil {
+		return f.ExecuteFunc(ctx, request)
+	}
+	var zero Response
+	return zero, nil
+}
+
+// FakeRepository records Get calls and delegates results to GetFunc.
+type FakeRepository[Key, Value any] struct {
+	GetFunc func(context.Context, Key) (Value, error)
+	Keys    []Key
+}
+
+func (f *FakeRepository[Key, Value]) Get(ctx context.Context, key Key) (Value, error) {
+	f.Keys = append(f.Keys, key)
+	if f.GetFunc != nil {
+		return f.GetFunc(ctx, key)
+	}
+	var zero Value
+	return zero, nil
+}
+
+// FakeValidator records Validate calls and delegates results to ValidateFunc.
+type FakeValidator[Input, Result any] struct {
+	ValidateFunc func(context.Context, Input) (Result, error)
+	Inputs       []Input
+}
+
+func (f *FakeValidator[Input, Result]) Validate(ctx context.Context, input Input) (Result, error) {
+	f.Inputs = append(f.Inputs, input)
+	if f.ValidateFunc != nil {
+		return f.ValidateFunc(ctx, input)
+	}
+	var zero Result
+	return zero, nil
+}
 
 type WorkspaceFilesystem struct {
 	MkdirAllFunc  func(string) error

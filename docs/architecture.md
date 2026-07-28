@@ -365,7 +365,7 @@ It parses commands, renders output, and invokes application services. It must no
 
 The foundation follows the same direction in code: `internal/cli` constructs application services, `internal/application` owns initialization orchestration and ports, `internal/domain` exposes time and ID ports, and `internal/infrastructure` provides filesystem, clock, and SQLite adapters. Dependencies point inward; domain imports neither filesystem nor SQL code.
 
-Package names stay short and layer-specific (`cli`, `application`, `domain`, and `infrastructure`). Application and infrastructure code should wrap operational errors with the failed action and `%w`; domain errors remain independent of CLI, filesystem, SQL-driver, and provider-SDK details. `internal/architecture` enforces those production-import rules in CI. Reusable fakes live in `internal/testkit`; provider, repository, and validator fakes are added with their concrete ports rather than guessed ahead of implementation.
+Package names stay short and layer-specific (`cli`, `application`, `domain`, and `infrastructure`). Application and infrastructure code should wrap operational errors with the failed action and `%w`; domain errors remain independent of CLI, filesystem, SQL-driver, and provider-SDK details. `internal/architecture` enforces those production-import rules in CI. Reusable fakes live in `internal/testkit`, including typed provider, repository, and validator callback fakes that later concrete ports can use directly.
 
 ### 7.2 Session Manager
 
