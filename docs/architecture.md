@@ -800,3 +800,11 @@ user-specific improvement over time
 ```
 
 The project is not judged by how many providers it supports or how complex its Agent graph becomes. It is judged by how much unnecessary model spending it removes while preserving outcomes the user accepts.
+
+## 14. Package and Test Conventions
+
+Packages use short, lower-case names that state their layer: `domain`, `application`, `infrastructure`, and `cli`. Dependencies point inward: domain has no internal or third-party dependencies; application does not import CLI or infrastructure; infrastructure implements domain and application ports. CLI is the composition root, so it may construct infrastructure adapters but must not bypass application behavior through direct domain access. `go test ./internal/architecture` enforces these rules; a deliberate forbidden import fails it.
+
+Domain tests use only in-memory values and test doubles, never network, filesystem, or database access. Infrastructure tests that use SQLite or temporary files are integration tests and carry the `integration` build tag. Run fast checks with `go test ./...` and the full suite with `go test -tags=integration ./...`. `internal/testutil` contains deterministic doubles only for existing domain ports (`Clock` and `IDGenerator`); provider, repository, and validator doubles wait until those ports exist.
+
+Add context at a boundary with `fmt.Errorf("action: %w", err)` and preserve the wrapped cause. Do not wrap an error merely to repeat its message, and do not expose infrastructure-specific error text as a domain contract.

@@ -26,11 +26,19 @@ jobs:
           git diff --exit-code
 
       - name: Format check
-        run: |
-          test -z "$(gofmt -l ./cmd ./internal)"
+        run: make fmt-check
 
-      - name: Test
-        run: go test ./...
+      - name: Static analysis
+        run: make vet
+
+      - name: Architecture conformance
+        run: make conformance
+
+      - name: Fast tests
+        run: make test-fast
+
+      - name: Infrastructure integration tests
+        run: make test-integration
 
       - name: Build
         run: go build ./cmd/grandet
