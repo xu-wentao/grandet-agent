@@ -12,6 +12,8 @@ Usage:
 
 Available Commands:
   init      Initialize local GrandetAgent workspace
+  run       Record a fixed-profile baseline trajectory
+  analyze   Report persisted baseline trajectories
   version   Print GrandetAgent version
   help      Print this help message
 
@@ -19,6 +21,8 @@ Examples:
   grandet init
   grandet init --dry-run
   grandet init --home ./tmp/.grandet
+  grandet run --profile openai-mini-default "Summarize this log"
+  grandet analyze cost --last 7d
 `
 
 func Execute() {
@@ -43,6 +47,10 @@ func run(args []string) error {
 		return nil
 	case "init":
 		return runInit(args[1:])
+	case "run":
+		return runBaseline(args[1:])
+	case "analyze":
+		return runAnalyze(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], helpText)
 	}

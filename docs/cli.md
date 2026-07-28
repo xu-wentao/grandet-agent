@@ -155,6 +155,8 @@ Session switch: no
 Validation: passed
 ```
 
+The current telemetry baseline requires `--profile`, persists the session, trajectory, task, step, and `trajectory_started` event before provider work could start, then records completion. Provider execution belongs to the later provider/profile milestone; until it exists, reports show provider usage and cost as `unknown` rather than fabricating zero values. The available baseline reports also accept `--session`, `--profile`, and `--outcome` filters alongside `--last`.
+
 Verbose output includes:
 
 - task analysis

@@ -101,7 +101,7 @@ func assertVersions(t *testing.T, path string) {
 	}
 	defer db.Close()
 	var migrations, versions int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_versions`).Scan(&migrations); err != nil || migrations != 1 {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_versions`).Scan(&migrations); err != nil || migrations != 2 {
 		t.Fatalf("schema versions = %d, %v", migrations, err)
 	}
 	if err := db.QueryRow(`SELECT COUNT(*) FROM workspace_versions`).Scan(&versions); err != nil || versions != 5 {

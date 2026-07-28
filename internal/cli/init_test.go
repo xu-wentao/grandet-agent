@@ -49,6 +49,29 @@ func TestInitDryRunPrintsPlanWithoutCreatingWorkspace(t *testing.T) {
 	}
 }
 
+func TestRunAndAnalyzeBaseline(t *testing.T) {
+	home := filepath.Join(t.TempDir(), ".grandet")
+	if err := run([]string{"init", "--home", home}); err != nil {
+		t.Fatal(err)
+	}
+	output := captureStdout(t, func() {
+		if err := run([]string{"run", "--home", home, "--profile", "fixed-profile", "measure this"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(output, "Profile: fixed-profile\nStatus: completed\n") {
+		t.Fatalf("run output = %q", output)
+	}
+	output = captureStdout(t, func() {
+		if err := run([]string{"analyze", "cost", "--home", home, "--last", "7d", "--profile", "fixed-profile", "--outcome", "completed"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if !strings.Contains(output, "Trajectories: 1\n") || !strings.Contains(output, "Known provider cost: unknown\n") {
+		t.Fatalf("cost report = %q", output)
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	reader, writer, err := os.Pipe()

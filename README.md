@@ -101,7 +101,7 @@ grandet analyze savings --baseline <profile-id>
 
 The repository has the Milestone 0 workspace foundation: `grandet init` creates versioned YAML defaults and a migration-managed SQLite database. Existing generated files are preserved unless `--force` is used; unrelated workspace files are never removed.
 
-The implementation sequence intentionally starts with telemetry, baseline measurement, and trajectory accounting before advanced routing. GrandetAgent must first prove what it is optimizing.
+The telemetry baseline now persists sessions, trajectories, tasks, steps, and append-only events. `grandet run --profile <profile-id> "..."` records a fixed-profile trajectory before any future provider call, and `grandet analyze cost --last 7d` plus `grandet analyze task-distribution --last 30d` read those records. Provider execution is not yet configured, so usage is explicitly reported as unknown rather than invented.
 
 ## Development
 
