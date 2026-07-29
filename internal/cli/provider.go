@@ -59,26 +59,30 @@ func runProviderList(args []string) error {
 }
 
 func runProviderTest(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: grandet provider test <provider> [--home path]")
+	}
+	provider := args[0]
 	fs := flag.NewFlagSet("provider test", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	home := fs.String("home", defaultHome(), "GrandetAgent home directory")
-	if err := fs.Parse(args); err != nil {
+	if err := fs.Parse(args[1:]); err != nil {
 		return err
 	}
-	if fs.NArg() != 1 {
+	if fs.NArg() != 0 {
 		return fmt.Errorf("usage: grandet provider test <provider> [--home path]")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	health, err := providerService(*home).Test(ctx, fs.Arg(0))
+	health, err := providerService(*home).Test(ctx, provider)
 	if err != nil {
 		return err
 	}
 	if health.RequestID == "" {
-		fmt.Printf("provider %s is healthy\n", fs.Arg(0))
+		fmt.Printf("provider %s is healthy\n", provider)
 		return nil
 	}
-	fmt.Printf("provider %s is healthy (request %s)\n", fs.Arg(0), health.RequestID)
+	fmt.Printf("provider %s is healthy (request %s)\n", provider, health.RequestID)
 	return nil
 }
 

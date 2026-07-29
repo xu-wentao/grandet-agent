@@ -151,11 +151,11 @@ func (p OpenAICompatibleProvider) Health(ctx context.Context) (domain.ProviderHe
 }
 
 func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.ProviderRequest) (domain.ProviderResponse, error) {
-	payload := struct {
-		Model     string               `json:"model"`
-		Messages  []domain.ChatMessage `json:"messages"`
-		MaxTokens int                  `json:"max_tokens,omitempty"`
-	}{Model: request.Model, Messages: request.Messages, MaxTokens: request.MaxOutputTokens}
+	messages := make([]openAIChatMessage, len(request.Messages))
+	for i, message := range request.Messages {
+		messages[i] = openAIChatMessage{Role: message.Role, Content: message.Content}
+	}
+	payload := openAIChatRequest{Model: request.Model, Messages: messages, MaxTokens: request.MaxOutputTokens}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return domain.ProviderResponse{}, fmt.Errorf("marshal provider request: %w", err)
@@ -171,7 +171,7 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.Pr
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
-		Usage openAIUsage `json:"usage"`
+		Usage *openAIUsage `json:"usage"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return domain.ProviderResponse{}, malformedResponse(err, response.Header)
@@ -179,7 +179,23 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.Pr
 	if len(result.Choices) == 0 {
 		return domain.ProviderResponse{}, malformedResponse(errors.New("response has no choices"), response.Header)
 	}
-	return domain.ProviderResponse{Text: result.Choices[0].Message.Content, Usage: result.Usage.normalize(), RequestID: requestID(response.Header)}, nil
+	var usage *domain.TokenUsage
+	if result.Usage != nil {
+		normalized := result.Usage.normalize()
+		usage = &normalized
+	}
+	return domain.ProviderResponse{Text: result.Choices[0].Message.Content, Usage: usage, RequestID: requestID(response.Header)}, nil
+}
+
+type openAIChatRequest struct {
+	Model     string              `json:"model"`
+	Messages  []openAIChatMessage `json:"messages"`
+	MaxTokens int                 `json:"max_tokens,omitempty"`
+}
+
+type openAIChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 type openAIUsage struct {

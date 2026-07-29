@@ -2,6 +2,7 @@ package infrastructure
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -31,6 +32,19 @@ func TestOpenAICompatibleProviderExecuteExtractsUsage(t *testing.T) {
 		if request.URL.Path != "/v1/chat/completions" || request.Header.Get("Authorization") != "Bearer test-secret" {
 			t.Fatalf("unexpected request: %s auth=%q", request.URL.Path, request.Header.Get("Authorization"))
 		}
+		var payload struct {
+			Model    string `json:"model"`
+			Messages []struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"messages"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil {
+			t.Fatal(err)
+		}
+		if payload.Model != "test" || len(payload.Messages) != 1 || payload.Messages[0].Role != "user" || payload.Messages[0].Content != "hi" {
+			t.Fatalf("unexpected OpenAI request payload: %#v", payload)
+		}
 		writer.Header().Set("X-Request-ID", "req_123")
 		writer.Write([]byte(`{"choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":11,"prompt_tokens_details":{"cached_tokens":3},"completion_tokens":7,"completion_tokens_details":{"reasoning_tokens":2}}}`))
 	})
@@ -39,8 +53,22 @@ func TestOpenAICompatibleProviderExecuteExtractsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Text != "hello" || response.RequestID != "req_123" || response.Usage != (domain.TokenUsage{InputTokens: 11, CachedTokens: 3, OutputTokens: 7, ReasoningTokens: 2}) {
+	if response.Text != "hello" || response.RequestID != "req_123" || response.Usage == nil || *response.Usage != (domain.TokenUsage{InputTokens: 11, CachedTokens: 3, OutputTokens: 7, ReasoningTokens: 2}) {
 		t.Fatalf("unexpected response: %#v", response)
+	}
+}
+
+func TestOpenAICompatibleProviderExecuteLeavesOmittedUsageUnknown(t *testing.T) {
+	provider := testOpenAIProvider(t, func(writer http.ResponseWriter, request *http.Request) {
+		writer.Write([]byte(`{"choices":[{"message":{"content":"hello"}}]}`))
+	})
+
+	response, err := provider.Execute(context.Background(), domain.ProviderRequest{Model: "test"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Usage != nil {
+		t.Fatalf("usage = %#v, want nil for omitted provider usage", response.Usage)
 	}
 }
 

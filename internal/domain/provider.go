@@ -54,7 +54,7 @@ type TokenUsage struct {
 
 type ProviderResponse struct {
 	Text      string
-	Usage     TokenUsage
+	Usage     *TokenUsage
 	RequestID string
 }
 
