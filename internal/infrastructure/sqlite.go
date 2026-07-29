@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/domain"
 	_ "modernc.org/sqlite"
 )
@@ -80,3 +81,5 @@ func createWorkspaceVersions(tx *sql.Tx) error {
 	_, err := tx.Exec(`CREATE TABLE workspace_versions (name TEXT PRIMARY KEY, version TEXT NOT NULL, updated_at TEXT NOT NULL)`)
 	return err
 }
+
+var _ application.WorkspaceDatabase = SQLiteMigrator{}
