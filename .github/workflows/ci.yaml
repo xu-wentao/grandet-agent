@@ -29,6 +29,12 @@ jobs:
         run: |
           test -z "$(gofmt -l ./cmd ./internal)"
 
+      - name: Static analysis
+        run: go vet ./...
+
+      - name: Architecture conformance
+        run: go test ./internal/architecture
+
       - name: Test
         run: go test ./...
 

@@ -6,6 +6,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/domain"
 	_ "modernc.org/sqlite"
 )
@@ -105,3 +106,5 @@ func createTelemetryTables(tx *sql.Tx) error {
 	}
 	return nil
 }
+
+var _ application.WorkspaceDatabase = SQLiteMigrator{}
