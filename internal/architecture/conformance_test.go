@@ -66,24 +66,56 @@ func TestRepositoryRoot(t *testing.T) {
 }
 
 func TestPackageImportsRejectsEmptyLayer(t *testing.T) {
-	if _, err := packageImports(t.TempDir()); err == nil {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "only_test.go"), []byte("package layer\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := packageImports(dir); err == nil {
 		t.Error("missing layer must fail conformance check")
 	}
 }
 
+func TestPackageImportsIncludesNestedProductionFiles(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "jobs")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "service.go"), []byte("package jobs\nimport \"database/sql\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "service_test.go"), []byte("package jobs\nimport \"os\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	imports, err := packageImports(filepath.Dir(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(imports) != 1 || imports[0] != "database/sql" {
+		t.Fatalf("nested production imports = %v, want [database/sql]", imports)
+	}
+}
+
 func packageImports(dir string) ([]string, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*.go"))
+	var files []string
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		files = append(files, path)
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
 	if len(files) == 0 {
-		return nil, fmt.Errorf("no Go files in expected layer %s", dir)
+		return nil, fmt.Errorf("no production Go files in expected layer %s", dir)
 	}
 	var imports []string
 	for _, name := range files {
-		if strings.HasSuffix(name, "_test.go") {
-			continue
-		}
 		file, err := parser.ParseFile(token.NewFileSet(), name, nil, parser.ImportsOnly)
 		if err != nil {
 			return nil, err
