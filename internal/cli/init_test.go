@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -54,21 +57,61 @@ func TestRunAndAnalyzeBaseline(t *testing.T) {
 	if err := run([]string{"init", "--home", home}); err != nil {
 		t.Fatal(err)
 	}
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/chat/completions" || request.Header.Get("Authorization") != "Bearer test-key" {
+			t.Errorf("request = %s %q", request.URL.Path, request.Header.Get("Authorization"))
+		}
+		var payload struct {
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil || payload.Model != "test-model" {
+			t.Errorf("model request = %#v, %v", payload, err)
+		}
+		writer.Header().Set("x-request-id", "request-1")
+		_, _ = writer.Write([]byte(`{"id":"completion-1","choices":[{"message":{"content":"measured response"}}],"usage":{"prompt_tokens":3,"completion_tokens":5,"completion_tokens_details":{"reasoning_tokens":2},"cost":0.001}}`))
+	}))
+	defer server.Close()
+	if err := os.WriteFile(filepath.Join(home, "providers.yaml"), []byte("providers:\n  test:\n    type: openai_compatible\n    base_url: "+server.URL+"/v1\n    api_key_env: GRANDET_TEST_API_KEY\n    enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, "models.yaml"), []byte("models:\n  - id: test/model\n    provider: test\n    upstream_name: test-model\n    enabled: true\nexecution_profiles:\n  - id: fixed-profile\n    model: test/model\n    enabled: true\n    max_output_tokens: 12\n    temperature: 0.2\n  - id: other-profile\n    model: test/model\n    enabled: true\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GRANDET_TEST_API_KEY", "test-key")
 	output := captureStdout(t, func() {
-		if err := run([]string{"run", "--home", home, "--profile", "fixed-profile", "measure this"}); err != nil {
+		if err := run([]string{"run", "measure this", "--profile", "fixed-profile", "--task-family", "summarization", "--session", "matching-session", "--home", home}); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(output, "Profile: fixed-profile\nStatus: completed\n") {
+	if !strings.Contains(output, "Profile: fixed-profile\nStatus: completed\nmeasured response\n") {
 		t.Fatalf("run output = %q", output)
 	}
+	if err := run([]string{"run", "--home", home, "--profile", "other-profile", "--session", "other-session", "measure this too"}); err != nil {
+		t.Fatal(err)
+	}
 	output = captureStdout(t, func() {
-		if err := run([]string{"analyze", "cost", "--home", home, "--last", "7d", "--profile", "fixed-profile", "--outcome", "completed"}); err != nil {
+		if err := run([]string{"analyze", "cost", "--home", home, "--last", "7d", "--session", "matching-session", "--profile", "fixed-profile", "--outcome", "completed"}); err != nil {
 			t.Fatal(err)
 		}
 	})
-	if !strings.Contains(output, "Trajectories: 1\n") || !strings.Contains(output, "Known provider cost: unknown\n") {
+	if !strings.Contains(output, "Trajectories: 1\n") || !strings.Contains(output, "Known provider cost: $0.001000\n") {
 		t.Fatalf("cost report = %q", output)
+	}
+	output = captureStdout(t, func() {
+		if err := run([]string{"analyze", "task-distribution", "--home", home, "--last", "7d", "--session", "matching-session", "--profile", "fixed-profile", "--outcome", "completed"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if output != "summarization: 1\n" {
+		t.Fatalf("task distribution = %q", output)
+	}
+	output = captureStdout(t, func() {
+		if err := run([]string{"analyze", "task-distribution", "--home", home, "--last", "7d", "--session", "other-session"}); err != nil {
+			t.Fatal(err)
+		}
+	})
+	if output != "general_qa: 1\n" {
+		t.Fatalf("default task distribution = %q", output)
 	}
 }
 

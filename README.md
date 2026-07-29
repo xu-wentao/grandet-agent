@@ -101,7 +101,7 @@ grandet analyze savings --baseline <profile-id>
 
 The repository has the Milestone 0 workspace foundation: `grandet init` creates versioned YAML defaults and a migration-managed SQLite database. Existing generated files are preserved unless `--force` is used; unrelated workspace files are never removed.
 
-The telemetry baseline now persists sessions, trajectories, tasks, steps, and append-only events. `grandet run --profile <profile-id> "..."` records a fixed-profile trajectory before any future provider call, and `grandet analyze cost --last 7d` plus `grandet analyze task-distribution --last 30d` read those records. Provider execution is not yet configured, so usage is explicitly reported as unknown rather than invented.
+The telemetry baseline persists sessions, trajectories, tasks, steps, and append-only events. `grandet run --profile <profile-id> "..."` records a trajectory before executing the selected enabled OpenAI-compatible provider profile; `--task-family <family>` records a specific family and otherwise uses `general_qa`. Usage fields the provider omits remain unknown. `grandet analyze cost --last 7d` and `grandet analyze task-distribution --last 30d` report those records with session, profile, date, and outcome filters.
 
 ## Development
 

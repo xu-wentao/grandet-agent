@@ -74,9 +74,17 @@ func (r SQLiteTelemetryRepository) StartModelCall(ctx context.Context, call doma
 		return err
 	}
 	started := timestamp(call.StartedAt)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO model_calls(id, trajectory_id, task_id, step_id, execution_profile_id, status, started_at) VALUES(?, ?, ?, ?, ?, 'RUNNING', ?)`, call.ID, call.TrajectoryID, call.TaskID, call.StepID, call.ProfileID, started); err != nil {
+	result, err := tx.ExecContext(ctx, `INSERT INTO model_calls(id, trajectory_id, task_id, step_id, execution_profile_id, status, started_at) SELECT ?, ?, ?, ?, ?, 'RUNNING', ? WHERE EXISTS (SELECT 1 FROM tasks t JOIN steps s ON s.id = ? AND s.task_id = t.id WHERE t.id = ? AND t.trajectory_id = ?)`, call.ID, call.TrajectoryID, call.TaskID, call.StepID, call.ProfileID, started, call.StepID, call.TaskID, call.TrajectoryID)
+	if err != nil {
 		tx.Rollback()
 		return err
+	}
+	if count, err := result.RowsAffected(); err != nil || count != 1 {
+		tx.Rollback()
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("model call task or step does not belong to trajectory")
 	}
 	if err := appendEvent(ctx, tx, call.TrajectoryID, "model_call_started", map[string]any{"model_call_id": call.ID, "step_id": call.StepID, "profile_id": call.ProfileID}, started); err != nil {
 		tx.Rollback()
@@ -100,7 +108,12 @@ func (r SQLiteTelemetryRepository) CompleteModelCall(ctx context.Context, call d
 		status, eventType = "FAILED", "model_call_failed"
 	}
 	completed := timestamp(call.CompletedAt)
-	result, err := tx.ExecContext(ctx, `UPDATE model_calls SET status = ?, provider_request_id = ?, input_tokens = ?, output_tokens = ?, reasoning_tokens = ?, ttft_ms = ?, total_latency_ms = ?, actual_cost_usd = ?, normalized_error_type = ?, completed_at = ? WHERE id = ? AND status = 'RUNNING'`, status, call.ProviderRequestID, call.InputTokens, call.OutputTokens, call.ReasoningTokens, call.TTFTMilliseconds, call.LatencyMilliseconds, call.ActualCostUSD, call.ErrorType, completed, call.ID)
+	trajectoryID, err := runningCallTrajectory(ctx, tx, "model_calls", call.ID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE model_calls SET status = ?, provider_request_id = ?, input_tokens = ?, output_tokens = ?, reasoning_tokens = ?, ttft_ms = ?, total_latency_ms = ?, actual_cost_usd = ?, normalized_error_type = ?, completed_at = ? WHERE id = ? AND trajectory_id = ? AND status = 'RUNNING'`, status, call.ProviderRequestID, call.InputTokens, call.OutputTokens, call.ReasoningTokens, call.TTFTMilliseconds, call.LatencyMilliseconds, call.ActualCostUSD, call.ErrorType, completed, call.ID, trajectoryID)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -121,7 +134,7 @@ func (r SQLiteTelemetryRepository) CompleteModelCall(ctx context.Context, call d
 	optional(payload, "ttft_ms", call.TTFTMilliseconds)
 	optional(payload, "total_latency_ms", call.LatencyMilliseconds)
 	optional(payload, "error_type", call.ErrorType)
-	if err := appendEvent(ctx, tx, call.TrajectoryID, eventType, payload, completed); err != nil {
+	if err := appendEvent(ctx, tx, trajectoryID, eventType, payload, completed); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -140,9 +153,17 @@ func (r SQLiteTelemetryRepository) StartToolCall(ctx context.Context, call domai
 		return err
 	}
 	created := timestamp(call.CreatedAt)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO tool_calls(id, trajectory_id, task_id, step_id, tool_name, status, created_at) VALUES(?, ?, ?, ?, ?, 'RUNNING', ?)`, call.ID, call.TrajectoryID, call.TaskID, call.StepID, call.Name, created); err != nil {
+	result, err := tx.ExecContext(ctx, `INSERT INTO tool_calls(id, trajectory_id, task_id, step_id, tool_name, status, created_at) SELECT ?, ?, ?, ?, ?, 'RUNNING', ? WHERE EXISTS (SELECT 1 FROM tasks t JOIN steps s ON s.id = ? AND s.task_id = t.id WHERE t.id = ? AND t.trajectory_id = ?)`, call.ID, call.TrajectoryID, call.TaskID, call.StepID, call.Name, created, call.StepID, call.TaskID, call.TrajectoryID)
+	if err != nil {
 		tx.Rollback()
 		return err
+	}
+	if count, err := result.RowsAffected(); err != nil || count != 1 {
+		tx.Rollback()
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("tool call task or step does not belong to trajectory")
 	}
 	if err := appendEvent(ctx, tx, call.TrajectoryID, "tool_call_started", map[string]any{"tool_call_id": call.ID, "tool_name": call.Name, "step_id": call.StepID}, created); err != nil {
 		tx.Rollback()
@@ -166,7 +187,12 @@ func (r SQLiteTelemetryRepository) CompleteToolCall(ctx context.Context, call do
 		status, eventType = "FAILED", "tool_call_failed"
 	}
 	created := timestamp(call.CreatedAt)
-	result, err := tx.ExecContext(ctx, `UPDATE tool_calls SET status = ?, outcome = ?, latency_ms = ?, error_type = ? WHERE id = ? AND status = 'RUNNING'`, status, call.Outcome, call.LatencyMS, call.ErrorType, call.ID)
+	trajectoryID, err := runningCallTrajectory(ctx, tx, "tool_calls", call.ID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE tool_calls SET status = ?, outcome = ?, latency_ms = ?, error_type = ? WHERE id = ? AND trajectory_id = ? AND status = 'RUNNING'`, status, call.Outcome, call.LatencyMS, call.ErrorType, call.ID, trajectoryID)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -182,7 +208,7 @@ func (r SQLiteTelemetryRepository) CompleteToolCall(ctx context.Context, call do
 	payload := map[string]any{"tool_call_id": call.ID, "tool_name": call.Name, "outcome": call.Outcome}
 	optional(payload, "latency_ms", call.LatencyMS)
 	optional(payload, "error_type", call.ErrorType)
-	if err := appendEvent(ctx, tx, call.TrajectoryID, eventType, payload, created); err != nil {
+	if err := appendEvent(ctx, tx, trajectoryID, eventType, payload, created); err != nil {
 		tx.Rollback()
 		return err
 	}
@@ -295,7 +321,7 @@ func startRun(ctx context.Context, tx *sql.Tx, run domain.BaselineRun) error {
 	if _, err := tx.ExecContext(ctx, `INSERT INTO trajectories(id, session_id, status, prompt_hash, active_policy_version, selected_execution_profile_id, command_budget_usd, started_at) VALUES(?, ?, 'RUNNING', ?, ?, ?, ?, ?)`, run.TrajectoryID, run.SessionID, run.PromptHash, run.PolicyVersion, run.ProfileID, run.CommandBudgetUS, created); err != nil {
 		return fmt.Errorf("save trajectory: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id, trajectory_id, status, task_family, difficulty, created_at) VALUES(?, ?, 'RUNNING', 'unknown', 0, ?)`, run.TaskID, run.TrajectoryID, created); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id, trajectory_id, status, task_family, difficulty, created_at) VALUES(?, ?, 'RUNNING', ?, 0, ?)`, run.TaskID, run.TrajectoryID, run.TaskFamily, created); err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO steps(id, task_id, sequence_no, step_type, status, execution_profile_id, started_at) VALUES(?, ?, 1, 'baseline', 'RUNNING', ?, ?)`, run.StepID, run.TaskID, run.ProfileID, created); err != nil {
@@ -355,6 +381,17 @@ func appendEvent(ctx context.Context, tx *sql.Tx, trajectoryID, eventType string
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO trajectory_events(trajectory_id, event_type, event_version, payload_json, created_at) VALUES(?, ?, 1, ?, ?)`, trajectoryID, eventType, string(encoded), createdAt)
 	return err
+}
+
+func runningCallTrajectory(ctx context.Context, tx *sql.Tx, table, id string) (string, error) {
+	var trajectoryID string
+	if err := tx.QueryRowContext(ctx, `SELECT trajectory_id FROM `+table+` WHERE id = ? AND status = 'RUNNING'`, id).Scan(&trajectoryID); err != nil {
+		if err == sql.ErrNoRows {
+			return "", fmt.Errorf("call %s is not running", id)
+		}
+		return "", err
+	}
+	return trajectoryID, nil
 }
 
 func optional[T any](payload map[string]any, name string, value *T) {

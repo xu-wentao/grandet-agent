@@ -9,10 +9,21 @@ type BaselineRun struct {
 	TaskID          string
 	StepID          string
 	ProfileID       string
+	TaskFamily      string
 	PolicyVersion   string
 	PromptHash      string
 	CommandBudgetUS *float64
 	StartedAt       time.Time
+}
+
+// ProviderResult contains only provider fields that were actually returned.
+type ProviderResult struct {
+	Output            string
+	ProviderRequestID *string
+	InputTokens       *int
+	OutputTokens      *int
+	ReasoningTokens   *int
+	ActualCostUSD     *float64
 }
 
 type ReportFilter struct {

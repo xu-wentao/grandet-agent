@@ -133,12 +133,12 @@ A session stores profile affinity, policy version, context fingerprint, and esti
 ## 7. Run a Trajectory
 
 ```bash
-grandet run "Analyze this Kubernetes error"
+grandet run "Analyze this Kubernetes error" --profile <profile-id> --task-family debugging
 grandet run --file task.md
 grandet run --stdin
 grandet run "Refactor this function" --context ./main.go
 grandet run "Continue the previous analysis" --session <session-id>
-grandet run "Use this exact profile" --profile <profile-id>
+grandet run "Use this exact profile" --profile <profile-id> --task-family summarization
 grandet run "Hard budget example" --max-cost-usd 0.02
 grandet run "Show full trace" --trace --verbose
 ```
@@ -155,7 +155,7 @@ Session switch: no
 Validation: passed
 ```
 
-The current telemetry baseline requires `--profile`, persists the session, trajectory, task, step, and `trajectory_started` event before provider work could start, then records completion. Provider execution belongs to the later provider/profile milestone; until it exists, reports show provider usage and cost as `unknown` rather than fabricating zero values. The available baseline reports also accept `--session`, `--profile`, and `--outcome` filters alongside `--last`.
+The current telemetry baseline requires `--profile`; `--task-family` records a specific family and defaults to the taxonomy's `general_qa`. It persists the session, trajectory, task, step, and `trajectory_started` event before provider work starts, then executes the selected enabled OpenAI-compatible profile. Provider fields absent from its response remain `unknown`; they are never fabricated. Run flags may appear before or after the prompt. The available baseline reports also accept `--session`, `--profile`, and `--outcome` filters alongside `--last`.
 
 Verbose output includes:
 

@@ -47,7 +47,7 @@ Deliverables:
 Commands:
 
 ```bash
-grandet run --profile <baseline-profile> "..."
+grandet run --profile <baseline-profile> --task-family <family> "..."
 grandet analyze cost --last 7d
 grandet analyze task-distribution --last 30d
 ```

@@ -12,7 +12,7 @@ Usage:
 
 Available Commands:
   init      Initialize local GrandetAgent workspace
-  run       Record a fixed-profile baseline trajectory
+  run       Execute a fixed-profile baseline trajectory
   analyze   Report persisted baseline trajectories
   version   Print GrandetAgent version
   help      Print this help message
@@ -21,7 +21,7 @@ Examples:
   grandet init
   grandet init --dry-run
   grandet init --home ./tmp/.grandet
-  grandet run --profile openai-mini-default "Summarize this log"
+  grandet run --profile openai-mini-default --task-family summarization "Summarize this log"
   grandet analyze cost --last 7d
 `
 
