@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"time"
+
+	"github.com/xu-wentao/grandet-agent/internal/domain"
 )
 
 type Clock struct{}
@@ -19,3 +21,8 @@ func (IDGenerator) New() string {
 	}
 	return hex.EncodeToString(bytes)
 }
+
+var (
+	_ domain.Clock       = Clock{}
+	_ domain.IDGenerator = IDGenerator{}
+)
