@@ -14,6 +14,7 @@ Available Commands:
   init      Initialize local GrandetAgent workspace
   run       Execute a fixed-profile baseline trajectory
   analyze   Report persisted baseline trajectories
+  provider  List or test configured providers
   version   Print GrandetAgent version
   help      Print this help message
 
@@ -51,6 +52,8 @@ func run(args []string) error {
 		return runBaseline(args[1:])
 	case "analyze":
 		return runAnalyze(args[1:])
+	case "provider":
+		return runProvider(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], helpText)
 	}

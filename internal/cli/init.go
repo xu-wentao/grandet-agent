@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
@@ -27,11 +26,7 @@ func runInit(args []string) error {
 	}
 
 	if home == "" {
-		userHome, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("get user home: %w", err)
-		}
-		home = filepath.Join(userHome, ".grandet")
+		home = defaultHome()
 	}
 
 	clock := infrastructure.Clock{}
