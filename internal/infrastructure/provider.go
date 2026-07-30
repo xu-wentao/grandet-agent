@@ -92,10 +92,11 @@ func (f OpenAICompatibleFactory) NewOpenAICompatible(config application.Provider
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return OpenAICompatibleProvider{baseURL: baseURL, apiKey: apiKey, client: client}, nil
+	return OpenAICompatibleProvider{name: config.Name, baseURL: baseURL, apiKey: apiKey, client: client}, nil
 }
 
 type OpenAICompatibleProvider struct {
+	name    string
 	baseURL *url.URL
 	apiKey  string
 	client  *http.Client
@@ -111,21 +112,21 @@ func (p OpenAICompatibleProvider) ListModels(ctx context.Context) ([]domain.Prov
 		Data json.RawMessage `json:"data"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&payload); err != nil {
-		return nil, malformedResponse(err, response.Header)
+		return nil, p.failure(malformedResponse(err, response.Header), 0)
 	}
 	if len(payload.Data) == 0 || string(payload.Data) == "null" {
-		return nil, malformedResponse(errors.New("models data is missing"), response.Header)
+		return nil, p.failure(malformedResponse(errors.New("models data is missing"), response.Header), 0)
 	}
 	var data []struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(payload.Data, &data); err != nil {
-		return nil, malformedResponse(err, response.Header)
+		return nil, p.failure(malformedResponse(err, response.Header), 0)
 	}
 	models := make([]domain.ProviderModel, len(data))
 	for i, model := range data {
 		if model.ID == "" {
-			return nil, malformedResponse(errors.New("model id is missing"), response.Header)
+			return nil, p.failure(malformedResponse(errors.New("model id is missing"), response.Header), 0)
 		}
 		models[i] = domain.ProviderModel{ID: model.ID}
 	}
@@ -145,7 +146,7 @@ func (p OpenAICompatibleProvider) Health(ctx context.Context) (domain.ProviderHe
 		if err == nil {
 			err = errors.New("models data is missing")
 		}
-		return domain.ProviderHealth{}, malformedResponse(err, response.Header)
+		return domain.ProviderHealth{}, p.failure(malformedResponse(err, response.Header), 0)
 	}
 	return domain.ProviderHealth{RequestID: requestID(response.Header)}, nil
 }
@@ -174,10 +175,10 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.Pr
 		Usage *openAIUsage `json:"usage"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
-		return domain.ProviderResponse{}, malformedResponse(err, response.Header)
+		return domain.ProviderResponse{}, p.failure(malformedResponse(err, response.Header), 0)
 	}
 	if len(result.Choices) == 0 {
-		return domain.ProviderResponse{}, malformedResponse(errors.New("response has no choices"), response.Header)
+		return domain.ProviderResponse{}, p.failure(malformedResponse(errors.New("response has no choices"), response.Header), 0)
 	}
 	var usage *domain.TokenUsage
 	if result.Usage != nil {
@@ -218,7 +219,7 @@ func (p OpenAICompatibleProvider) do(ctx context.Context, method, endpoint strin
 	target.Path = strings.TrimSuffix(target.Path, "/") + endpoint
 	request, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(body))
 	if err != nil {
-		return nil, &domain.ProviderError{Kind: domain.ProviderNetworkFailure, Detail: err.Error()}
+		return nil, p.failure(&domain.ProviderError{Kind: domain.ProviderNetworkFailure, Detail: err.Error()}, 0)
 	}
 	request.Header.Set("Accept", "application/json")
 	if body != nil {
@@ -233,7 +234,7 @@ func (p OpenAICompatibleProvider) do(ctx context.Context, method, endpoint strin
 		if errors.Is(err, context.DeadlineExceeded) || ctx.Err() == context.DeadlineExceeded {
 			kind = domain.ProviderTimeout
 		}
-		return nil, &domain.ProviderError{Kind: kind, Detail: err.Error()}
+		return nil, p.failure(&domain.ProviderError{Kind: kind, Detail: err.Error()}, 0)
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
 		detail := fmt.Sprintf("HTTP %d", response.StatusCode)
@@ -241,9 +242,18 @@ func (p OpenAICompatibleProvider) do(ctx context.Context, method, endpoint strin
 			detail += ": " + strings.TrimSpace(string(contents))
 		}
 		response.Body.Close()
-		return nil, &domain.ProviderError{Kind: classifyStatus(response.StatusCode, detail), Detail: redact(detail, p.apiKey), RequestID: requestID(response.Header)}
+		return nil, p.failure(&domain.ProviderError{Kind: classifyStatus(response.StatusCode, detail), Detail: detail, RequestID: requestID(response.Header)}, response.StatusCode)
 	}
 	return response, nil
+}
+
+func (p OpenAICompatibleProvider) failure(cause *domain.ProviderError, statusCode int) *domain.Error {
+	return NormalizeProviderFailure(ProviderFailure{
+		Provider:   p.name,
+		StatusCode: statusCode,
+		RequestID:  cause.RequestID,
+		Cause:      cause,
+	}, domain.Correlation{}, p.apiKey)
 }
 
 func classifyStatus(status int, detail string) domain.ProviderErrorKind {
@@ -277,11 +287,4 @@ func requestID(headers http.Header) string {
 		}
 	}
 	return ""
-}
-
-func redact(value, secret string) string {
-	if secret == "" {
-		return value
-	}
-	return strings.ReplaceAll(value, secret, "[redacted]")
 }

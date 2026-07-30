@@ -39,13 +39,17 @@ func run(args []string) error {
 	if err != nil {
 		return err
 	}
-	return runCommand(args)
+	return runCommand(args, os.Stderr)
 }
 
 func execute(args []string, stderr io.Writer) int {
 	args, format, err := outputFormat(args)
 	if err == nil {
-		err = runCommand(args)
+		diagnostics := stderr
+		if format == "json" {
+			diagnostics = io.Discard
+		}
+		err = runCommand(args, diagnostics)
 	}
 	if err == nil {
 		return 0
@@ -55,7 +59,7 @@ func execute(args []string, stderr io.Writer) int {
 	return exitCode(string(normalized.Code))
 }
 
-func runCommand(args []string) error {
+func runCommand(args []string, diagnostics io.Writer) error {
 	if len(args) == 0 {
 		fmt.Print(helpText)
 		return nil
@@ -69,11 +73,11 @@ func runCommand(args []string) error {
 		fmt.Println("grandet dev")
 		return nil
 	case "init":
-		return runInit(args[1:])
+		return runInit(args[1:], diagnostics)
 	case "provider":
-		return runProvider(args[1:])
+		return runProvider(args[1:], diagnostics)
 	default:
-		return fmt.Errorf("unknown command %q\n\n%s", args[0], helpText)
+		return application.ValidationError(fmt.Errorf("unknown command %q", args[0]))
 	}
 }
 
@@ -84,7 +88,7 @@ func outputFormat(args []string) ([]string, string, error) {
 		arg := args[index]
 		if arg == "--output" {
 			if index+1 == len(args) {
-				return nil, format, fmt.Errorf("--output requires a value")
+				return nil, format, application.ValidationError(fmt.Errorf("--output requires a value"))
 			}
 			index++
 			format = args[index]
@@ -97,7 +101,7 @@ func outputFormat(args []string) ([]string, string, error) {
 		remaining = append(remaining, arg)
 	}
 	if format != "text" && format != "json" {
-		return nil, format, fmt.Errorf("unsupported output format %q", format)
+		return nil, format, application.ValidationError(fmt.Errorf("unsupported output format %q", format))
 	}
 	return remaining, format, nil
 }

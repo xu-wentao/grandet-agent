@@ -59,6 +59,27 @@ func TestJSONErrorOutputRedactsProviderDiagnosticAndKeepsCorrelation(t *testing.
 	}
 }
 
+func TestJSONErrorOutputSuppressesFlagDiagnosticsAndSecrets(t *testing.T) {
+	var stderr bytes.Buffer
+	if code := execute([]string{"--output", "json", "init", "--force=sk-proj-secret"}, &stderr); code != 3 {
+		t.Fatalf("exit code = %d, stderr = %s", code, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "sk-proj-secret") {
+		t.Fatalf("JSON error leaked secret: %s", stderr.String())
+	}
+	var output struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(stderr.Bytes(), &output); err != nil {
+		t.Fatalf("JSON output includes flag diagnostics: %s", stderr.String())
+	}
+	if output.Error.Code != "validation_error" {
+		t.Fatalf("error output = %#v", output.Error)
+	}
+}
+
 func TestInitDryRunPrintsPlanWithoutCreatingWorkspace(t *testing.T) {
 	home := filepath.Join(t.TempDir(), ".grandet")
 	var err error

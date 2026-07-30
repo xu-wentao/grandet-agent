@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"time"
@@ -12,15 +13,15 @@ import (
 	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
 )
 
-func runProvider(args []string) error {
+func runProvider(args []string, diagnostics io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: grandet provider <list|test> [provider] [--home path]")
 	}
 	switch args[0] {
 	case "list":
-		return runProviderList(args[1:])
+		return runProviderList(args[1:], diagnostics)
 	case "test":
-		return runProviderTest(args[1:])
+		return runProviderTest(args[1:], diagnostics)
 	default:
 		return fmt.Errorf("unknown provider command %q", args[0])
 	}
@@ -34,12 +35,12 @@ func providerService(home string) application.ProviderService {
 	)
 }
 
-func runProviderList(args []string) error {
+func runProviderList(args []string, diagnostics io.Writer) error {
 	fs := flag.NewFlagSet("provider list", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs.SetOutput(diagnostics)
 	home := fs.String("home", defaultHome(), "GrandetAgent home directory")
 	if err := fs.Parse(args); err != nil {
-		return err
+		return application.ValidationError(err)
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("provider list accepts no provider name")
@@ -58,16 +59,16 @@ func runProviderList(args []string) error {
 	return nil
 }
 
-func runProviderTest(args []string) error {
+func runProviderTest(args []string, diagnostics io.Writer) error {
 	if len(args) == 0 {
 		return fmt.Errorf("usage: grandet provider test <provider> [--home path]")
 	}
 	provider := args[0]
 	fs := flag.NewFlagSet("provider test", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs.SetOutput(diagnostics)
 	home := fs.String("home", defaultHome(), "GrandetAgent home directory")
 	if err := fs.Parse(args[1:]); err != nil {
-		return err
+		return application.ValidationError(err)
 	}
 	if fs.NArg() != 0 {
 		return fmt.Errorf("usage: grandet provider test <provider> [--home path]")

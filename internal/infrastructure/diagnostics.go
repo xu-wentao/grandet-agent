@@ -14,7 +14,7 @@ const redacted = "[REDACTED]"
 
 var (
 	credentialURLPattern = regexp.MustCompile(`([[:alpha:]][[:alnum:]+.-]*://)[^/@[:space:]]+@`)
-	headerPattern        = regexp.MustCompile(`(?i)\b(authorization|proxy-authorization|x-api-key|api-key|api_key)\s*[:=]\s*(?:bearer\s+)?[^[:space:],;]+`)
+	headerPattern        = regexp.MustCompile(`(?im)\b(authorization|proxy-authorization|x-api-key|api-key|api_key)\s*[:=]\s*[^\r\n]*`)
 	queryPattern         = regexp.MustCompile(`(?i)([?&](?:api[_-]?key|access[_-]?token|token|password|secret)=)[^&#[:space:]]+`)
 	secretTokenPattern   = regexp.MustCompile(`\b(?:sk|rk|pk)[_-][[:alnum:]_-]+`)
 )
@@ -84,6 +84,17 @@ func providerCode(failure ProviderFailure) (domain.ErrorCode, bool) {
 	var networkError net.Error
 	if errors.As(failure.Cause, &networkError) && networkError.Timeout() {
 		return domain.CodeProviderTimeout, true
+	}
+	var providerError *domain.ProviderError
+	if errors.As(failure.Cause, &providerError) {
+		switch providerError.Kind {
+		case domain.ProviderTimeout:
+			return domain.CodeProviderTimeout, true
+		case domain.ProviderRateLimit:
+			return domain.CodeProviderRateLimited, true
+		case domain.ProviderAuthentication, domain.ProviderModelUnavailable, domain.ProviderContextWindowExceeded:
+			return domain.CodeProviderRejected, false
+		}
 	}
 	return domain.CodeProviderUnavailable, true
 }

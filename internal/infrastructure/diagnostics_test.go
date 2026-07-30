@@ -16,6 +16,8 @@ func TestRedact(t *testing.T) {
 		secret string
 	}{
 		{name: "authorization header", input: "Authorization: Bearer sk_secret", secret: "sk_secret"},
+		{name: "basic authorization header", input: "Authorization: Basic dXNlcjpwYXNz", secret: "dXNlcjpwYXNz"},
+		{name: "digest authorization header", input: `Authorization: Digest username="user", response="hash"`, secret: "hash"},
 		{name: "raw API key", input: "request failed with sk-proj-secret", secret: "sk-proj-secret"},
 		{name: "api key header", input: "X-Api-Key: key-secret", secret: "key-secret"},
 		{name: "credential URL", input: "https://user:password@example.com/v1", secret: "user:password"},
