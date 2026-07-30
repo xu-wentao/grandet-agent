@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"database/sql"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -62,10 +63,28 @@ func TestRunAndAnalyzeBaseline(t *testing.T) {
 			t.Errorf("request = %s %q", request.URL.Path, request.Header.Get("Authorization"))
 		}
 		var payload struct {
-			Model string `json:"model"`
+			Model    string `json:"model"`
+			Messages []struct {
+				Content string `json:"content"`
+			} `json:"messages"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&payload); err != nil || payload.Model != "test-model" {
 			t.Errorf("model request = %#v, %v", payload, err)
+		}
+		switch payload.Messages[0].Content {
+		case "http failure":
+			writer.Header().Set("x-request-id", "request-http-failure")
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = writer.Write([]byte(`{"error":"unavailable"}`))
+			return
+		case "no choices":
+			writer.Header().Set("x-request-id", "request-no-choices")
+			_, _ = writer.Write([]byte(`{"choices":[]}`))
+			return
+		case "empty message":
+			writer.Header().Set("x-request-id", "request-empty-message")
+			_, _ = writer.Write([]byte(`{"choices":[{"message":{"content":""}}]}`))
+			return
 		}
 		writer.Header().Set("x-request-id", "request-1")
 		_, _ = writer.Write([]byte(`{"id":"completion-1","choices":[{"message":{"content":"measured response"}}],"usage":{"prompt_tokens":3,"completion_tokens":5,"completion_tokens_details":{"reasoning_tokens":2},"cost":0.001}}`))
@@ -112,6 +131,23 @@ func TestRunAndAnalyzeBaseline(t *testing.T) {
 	})
 	if output != "general_qa: 1\n" {
 		t.Fatalf("default task distribution = %q", output)
+	}
+	db, err := sql.Open("sqlite", filepath.Join(home, "grandet.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	for _, failure := range []struct{ prompt, requestID string }{{"http failure", "request-http-failure"}, {"no choices", "request-no-choices"}, {"empty message", "request-empty-message"}} {
+		if err := run([]string{"run", "--home", home, "--profile", "fixed-profile", "--session", failure.prompt, failure.prompt}); err == nil {
+			t.Fatalf("expected %q provider failure", failure.prompt)
+		}
+		var trajectoryStatus, callStatus, requestID string
+		if err := db.QueryRow(`SELECT t.status, m.status, m.provider_request_id FROM trajectories t JOIN model_calls m ON m.trajectory_id = t.id WHERE t.session_id = ?`, failure.prompt).Scan(&trajectoryStatus, &callStatus, &requestID); err != nil {
+			t.Fatal(err)
+		}
+		if trajectoryStatus != "FAILED" || callStatus != "FAILED" || requestID != failure.requestID {
+			t.Fatalf("%q persisted statuses/request ID = %q, %q, %q", failure.prompt, trajectoryStatus, callStatus, requestID)
+		}
 	}
 }
 

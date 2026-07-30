@@ -122,12 +122,16 @@ func (e openAICompatibleExecutor) Execute(ctx context.Context, prompt string) (d
 		return domain.ProviderResult{}, err
 	}
 	defer response.Body.Close()
+	result := domain.ProviderResult{}
+	if requestID := response.Header.Get("x-request-id"); requestID != "" {
+		result.ProviderRequestID = &requestID
+	}
 	contents, err := io.ReadAll(response.Body)
 	if err != nil {
-		return domain.ProviderResult{}, err
+		return result, err
 	}
 	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return domain.ProviderResult{}, fmt.Errorf("provider returned %s: %s", response.Status, strings.TrimSpace(string(contents)))
+		return result, fmt.Errorf("provider returned %s: %s", response.Status, strings.TrimSpace(string(contents)))
 	}
 	var completion struct {
 		ID      string `json:"id"`
@@ -146,18 +150,18 @@ func (e openAICompatibleExecutor) Execute(ctx context.Context, prompt string) (d
 		} `json:"usage"`
 	}
 	if err := json.Unmarshal(contents, &completion); err != nil {
-		return domain.ProviderResult{}, fmt.Errorf("decode provider response: %w", err)
+		return result, fmt.Errorf("decode provider response: %w", err)
 	}
-	result := domain.ProviderResult{InputTokens: completion.Usage.PromptTokens, OutputTokens: completion.Usage.CompletionTokens, ReasoningTokens: completion.Usage.CompletionTokensDetails.ReasoningTokens, ActualCostUSD: completion.Usage.Cost}
-	if len(completion.Choices) > 0 {
-		result.Output = completion.Choices[0].Message.Content
+	result.InputTokens = completion.Usage.PromptTokens
+	result.OutputTokens = completion.Usage.CompletionTokens
+	result.ReasoningTokens = completion.Usage.CompletionTokensDetails.ReasoningTokens
+	result.ActualCostUSD = completion.Usage.Cost
+	if result.ProviderRequestID == nil && completion.ID != "" {
+		result.ProviderRequestID = &completion.ID
 	}
-	requestID := response.Header.Get("x-request-id")
-	if requestID == "" {
-		requestID = completion.ID
+	if len(completion.Choices) == 0 || completion.Choices[0].Message.Content == "" {
+		return result, fmt.Errorf("provider returned no message content")
 	}
-	if requestID != "" {
-		result.ProviderRequestID = &requestID
-	}
+	result.Output = completion.Choices[0].Message.Content
 	return result, nil
 }

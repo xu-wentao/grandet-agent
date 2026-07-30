@@ -125,11 +125,23 @@ func TestCallOwnershipComesFromStoredRows(t *testing.T) {
 	if err := repository.StartToolCall(context.Background(), domain.ToolCall{ID: "bad", TrajectoryID: first.TrajectoryID, TaskID: second.TaskID, StepID: second.StepID, Name: "test", CreatedAt: started}); err == nil {
 		t.Fatal("expected mismatched tool ownership to fail")
 	}
+	firstStepID := first.StepID
+	if err := repository.RecordValidation(context.Background(), domain.ValidationResult{ID: "validation-1", TrajectoryID: first.TrajectoryID, TaskID: first.TaskID, StepID: &firstStepID, Validator: "test", Status: "PASSED", CreatedAt: started}); err != nil {
+		t.Fatal(err)
+	}
+	stepID := second.StepID
+	if err := repository.RecordValidation(context.Background(), domain.ValidationResult{ID: "bad-validation", TrajectoryID: first.TrajectoryID, TaskID: second.TaskID, StepID: &stepID, Validator: "test", Status: "PASSED", CreatedAt: started}); err == nil {
+		t.Fatal("expected mismatched validation ownership to fail")
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	var validations int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM validation_results WHERE trajectory_id = ?`, first.TrajectoryID).Scan(&validations); err != nil || validations != 1 {
+		t.Fatalf("validation records = %d, %v", validations, err)
+	}
 	for _, eventType := range []string{"model_call_completed", "tool_call_completed"} {
 		var trajectoryID string
 		if err := db.QueryRow(`SELECT trajectory_id FROM trajectory_events WHERE event_type = ?`, eventType).Scan(&trajectoryID); err != nil || trajectoryID != first.TrajectoryID {

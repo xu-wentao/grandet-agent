@@ -24,6 +24,8 @@ type ProviderExecutor interface {
 	Execute(context.Context, string) (domain.ProviderResult, error)
 }
 
+type ReportFilter = domain.ReportFilter
+
 type RunOptions struct {
 	SessionID       string
 	ProfileID       string

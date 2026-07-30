@@ -233,9 +233,17 @@ func (r SQLiteTelemetryRepository) RecordValidation(ctx context.Context, result 
 		return err
 	}
 	created := timestamp(result.CreatedAt)
-	if _, err := tx.ExecContext(ctx, `INSERT INTO validation_results(id, trajectory_id, task_id, step_id, validator_type, status, created_at) VALUES(?, ?, ?, ?, ?, ?, ?)`, result.ID, result.TrajectoryID, result.TaskID, result.StepID, result.Validator, result.Status, created); err != nil {
+	insert, err := tx.ExecContext(ctx, `INSERT INTO validation_results(id, trajectory_id, task_id, step_id, validator_type, status, created_at) SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM tasks t WHERE t.id = ? AND t.trajectory_id = ? AND (? IS NULL OR EXISTS (SELECT 1 FROM steps s WHERE s.id = ? AND s.task_id = t.id)))`, result.ID, result.TrajectoryID, result.TaskID, result.StepID, result.Validator, result.Status, created, result.TaskID, result.TrajectoryID, result.StepID, result.StepID)
+	if err != nil {
 		tx.Rollback()
 		return err
+	}
+	if count, err := insert.RowsAffected(); err != nil || count != 1 {
+		tx.Rollback()
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("validation task or step does not belong to trajectory")
 	}
 	if err := appendEvent(ctx, tx, result.TrajectoryID, "validation_result", map[string]any{"validation_id": result.ID, "validator": result.Validator, "status": result.Status}, created); err != nil {
 		tx.Rollback()

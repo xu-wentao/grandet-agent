@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/xu-wentao/grandet-agent/internal/domain"
+	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
 )
 
@@ -64,7 +64,7 @@ func analyzeTaskDistribution(args []string) error {
 	return nil
 }
 
-func analyzeInputs(name string, args []string) (domain.ReportFilter, infrastructure.SQLiteTelemetryRepository, error) {
+func analyzeInputs(name string, args []string) (application.ReportFilter, infrastructure.SQLiteTelemetryRepository, error) {
 	fs := flag.NewFlagSet("analyze "+name, flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	var home, last, session, profile, outcome string
@@ -74,27 +74,27 @@ func analyzeInputs(name string, args []string) (domain.ReportFilter, infrastruct
 	fs.StringVar(&profile, "profile", "", "Only an explicit profile")
 	fs.StringVar(&outcome, "outcome", "", "Only COMPLETED, FAILED, or RUNNING trajectories")
 	if err := fs.Parse(args); err != nil {
-		return domain.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, err
+		return application.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, err
 	}
 	if fs.NArg() != 0 {
-		return domain.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, fmt.Errorf("unexpected analyze arguments: %s", strings.Join(fs.Args(), " "))
+		return application.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, fmt.Errorf("unexpected analyze arguments: %s", strings.Join(fs.Args(), " "))
 	}
 	duration, err := parseLast(last)
 	if err != nil {
-		return domain.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, err
+		return application.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, err
 	}
 	home, err = grandetHome(home)
 	if err != nil {
-		return domain.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, err
+		return application.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, err
 	}
 	path := filepath.Join(home, "grandet.db")
 	if _, err := os.Stat(path); err != nil {
 		if os.IsNotExist(err) {
-			return domain.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, fmt.Errorf("workspace is not initialized; run grandet init --home %s", home)
+			return application.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, fmt.Errorf("workspace is not initialized; run grandet init --home %s", home)
 		}
-		return domain.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, fmt.Errorf("check workspace database: %w", err)
+		return application.ReportFilter{}, infrastructure.SQLiteTelemetryRepository{}, fmt.Errorf("check workspace database: %w", err)
 	}
-	return domain.ReportFilter{Since: time.Now().UTC().Add(-duration), SessionID: session, ProfileID: profile, Outcome: strings.ToUpper(outcome)}, infrastructure.NewSQLiteTelemetryRepository(path, infrastructure.Clock{}), nil
+	return application.ReportFilter{Since: time.Now().UTC().Add(-duration), SessionID: session, ProfileID: profile, Outcome: strings.ToUpper(outcome)}, infrastructure.NewSQLiteTelemetryRepository(path, infrastructure.Clock{}), nil
 }
 
 func parseLast(value string) (time.Duration, error) {
