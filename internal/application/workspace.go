@@ -51,14 +51,14 @@ func (s WorkspaceInitializer) Initialize(options InitOptions) (InitResult, error
 	}
 	for _, path := range plan.Directories {
 		if err := s.filesystem.MkdirAll(path); err != nil {
-			return InitResult{}, fmt.Errorf("create dir %s: %w", path, err)
+			return InitResult{}, domain.NewError(domain.CodePersistenceFailure, "could not initialize workspace directories; check the path and permissions", false, domain.Correlation{}, fmt.Errorf("create dir %s: %w", path, err))
 		}
 	}
 	created := make([]string, 0, len(defaultFiles(options.Home)))
 	for path, content := range defaultFiles(options.Home) {
 		wrote, err := s.filesystem.WriteFile(path, content, options.Force)
 		if err != nil {
-			return InitResult{}, fmt.Errorf("write file %s: %w", path, err)
+			return InitResult{}, domain.NewError(domain.CodePersistenceFailure, "could not write workspace configuration; check the path and permissions", false, domain.Correlation{}, fmt.Errorf("write file %s: %w", path, err))
 		}
 		if wrote {
 			created = append(created, path)
@@ -66,10 +66,10 @@ func (s WorkspaceInitializer) Initialize(options InitOptions) (InitResult, error
 	}
 	databasePath := filepath.Join(options.Home, "grandet.db")
 	if err := s.database.Migrate(databasePath); err != nil {
-		return InitResult{}, fmt.Errorf("migrate database: %w", err)
+		return InitResult{}, domain.NewError(domain.CodePersistenceFailure, "could not initialize workspace database; check the path and permissions", false, domain.Correlation{}, fmt.Errorf("migrate database: %w", err))
 	}
 	if err := s.database.RecordVersions(databasePath, workspaceVersions()); err != nil {
-		return InitResult{}, fmt.Errorf("record workspace versions: %w", err)
+		return InitResult{}, domain.NewError(domain.CodePersistenceFailure, "could not record workspace versions; check the database path and permissions", false, domain.Correlation{}, fmt.Errorf("record workspace versions: %w", err))
 	}
 	return InitResult{Plan: plan, Created: created}, nil
 }
