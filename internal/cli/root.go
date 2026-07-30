@@ -12,6 +12,7 @@ Usage:
 
 Available Commands:
   init      Initialize local GrandetAgent workspace
+  provider  List or test configured providers
   version   Print GrandetAgent version
   help      Print this help message
 
@@ -43,6 +44,8 @@ func run(args []string) error {
 		return nil
 	case "init":
 		return runInit(args[1:])
+	case "provider":
+		return runProvider(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], helpText)
 	}

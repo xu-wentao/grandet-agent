@@ -99,7 +99,7 @@ grandet analyze savings --baseline <profile-id>
 
 ## Current Status
 
-The repository has the Milestone 0 workspace foundation: `grandet init` creates versioned YAML defaults and a migration-managed SQLite database. Existing generated files are preserved unless `--force` is used; unrelated workspace files are never removed.
+The repository has the workspace foundation plus an OpenAI-compatible provider health slice. `grandet init` creates versioned YAML defaults and a migration-managed SQLite database. `grandet provider list` loads `providers.yaml`; `grandet provider test <name>` checks its `/models` endpoint without generating tokens. Credentials are read only from the configured environment variable and are never stored. Existing generated files are preserved unless `--force` is used; unrelated workspace files are never removed.
 
 The implementation sequence intentionally starts with telemetry, baseline measurement, and trajectory accounting before advanced routing. GrandetAgent must first prove what it is optimizing.
 
