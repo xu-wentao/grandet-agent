@@ -54,7 +54,7 @@ func TestSQLiteMigrationCanRerun(t *testing.T) {
 	}
 	defer db.Close()
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_versions`).Scan(&count); err != nil || count != 1 {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM schema_versions`).Scan(&count); err != nil || count != 2 {
 		t.Fatalf("migration records = %d, %v", count, err)
 	}
 }

@@ -43,19 +43,21 @@ type ProviderRequest struct {
 	Model           string
 	Messages        []ChatMessage
 	MaxOutputTokens int
+	Temperature     float64
 }
 
 type TokenUsage struct {
-	InputTokens     int
-	CachedTokens    int
-	OutputTokens    int
-	ReasoningTokens int
+	InputTokens     *int
+	CachedTokens    *int
+	OutputTokens    *int
+	ReasoningTokens *int
 }
 
 type ProviderResponse struct {
-	Text      string
-	Usage     *TokenUsage
-	RequestID string
+	Text          string
+	Usage         *TokenUsage
+	RequestID     string
+	ActualCostUSD *float64
 }
 
 type ProviderHealth struct {

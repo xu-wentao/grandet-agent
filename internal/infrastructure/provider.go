@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -101,6 +102,111 @@ type OpenAICompatibleProvider struct {
 	client  *http.Client
 }
 
+type modelsFile struct {
+	Models            []modelConfig   `yaml:"models"`
+	ExecutionProfiles []profileConfig `yaml:"execution_profiles"`
+}
+
+type modelConfig struct {
+	ID           string `yaml:"id"`
+	Provider     string `yaml:"provider"`
+	UpstreamName string `yaml:"upstream_name"`
+	Enabled      bool   `yaml:"enabled"`
+}
+
+type profileConfig struct {
+	ID              string  `yaml:"id"`
+	Model           string  `yaml:"model"`
+	Enabled         bool    `yaml:"enabled"`
+	MaxOutputTokens int     `yaml:"max_output_tokens"`
+	Temperature     float64 `yaml:"temperature"`
+}
+
+// LoadProviderExecutor resolves an enabled fixed profile through the shared provider adapter.
+func LoadProviderExecutor(home, profileID string) (openAICompatibleExecutor, error) {
+	configs, err := (ProviderConfigFile{Path: filepath.Join(home, "providers.yaml")}).Load()
+	if err != nil {
+		return openAICompatibleExecutor{}, err
+	}
+	contents, err := os.ReadFile(filepath.Join(home, "models.yaml"))
+	if err != nil {
+		return openAICompatibleExecutor{}, fmt.Errorf("read models: %w", err)
+	}
+	var models modelsFile
+	if err := yaml.Unmarshal(contents, &models); err != nil {
+		return openAICompatibleExecutor{}, fmt.Errorf("parse models: %w", err)
+	}
+	var profile profileConfig
+	for _, candidate := range models.ExecutionProfiles {
+		if candidate.ID == profileID {
+			profile = candidate
+			break
+		}
+	}
+	if profile.ID == "" || !profile.Enabled {
+		return openAICompatibleExecutor{}, fmt.Errorf("enabled execution profile %q not found", profileID)
+	}
+	var model modelConfig
+	for _, candidate := range models.Models {
+		if candidate.ID == profile.Model {
+			model = candidate
+			break
+		}
+	}
+	if model.ID == "" || !model.Enabled {
+		return openAICompatibleExecutor{}, fmt.Errorf("enabled model %q not found", profile.Model)
+	}
+	for _, config := range configs {
+		if config.Name != model.Provider {
+			continue
+		}
+		if !config.Enabled || config.Type != "openai_compatible" {
+			break
+		}
+		apiKey := ""
+		if config.APIKeyEnv != "" {
+			var ok bool
+			apiKey, ok = Environment{}.Lookup(config.APIKeyEnv)
+			if !ok || apiKey == "" {
+				return openAICompatibleExecutor{}, fmt.Errorf("provider %q requires %s", config.Name, config.APIKeyEnv)
+			}
+		}
+		provider, err := (OpenAICompatibleFactory{}).NewOpenAICompatible(config, apiKey)
+		if err != nil {
+			return openAICompatibleExecutor{}, err
+		}
+		return openAICompatibleExecutor{provider: provider, model: model.UpstreamName, maxOutputTokens: profile.MaxOutputTokens, temperature: profile.Temperature}, nil
+	}
+	return openAICompatibleExecutor{}, fmt.Errorf("enabled openai_compatible provider %q not found", model.Provider)
+}
+
+type openAICompatibleExecutor struct {
+	provider        domain.Provider
+	model           string
+	maxOutputTokens int
+	temperature     float64
+}
+
+func (e openAICompatibleExecutor) Execute(ctx context.Context, prompt string) (domain.ProviderResult, error) {
+	response, err := e.provider.Execute(ctx, domain.ProviderRequest{Model: e.model, Messages: []domain.ChatMessage{{Role: "user", Content: prompt}}, MaxOutputTokens: e.maxOutputTokens, Temperature: e.temperature})
+	result := domain.ProviderResult{Output: response.Text, ActualCostUSD: response.ActualCostUSD}
+	if response.RequestID != "" {
+		result.ProviderRequestID = &response.RequestID
+	}
+	if response.Usage != nil {
+		result.InputTokens = response.Usage.InputTokens
+		result.OutputTokens = response.Usage.OutputTokens
+		result.ReasoningTokens = response.Usage.ReasoningTokens
+	}
+	if err != nil {
+		var providerError *domain.ProviderError
+		if errors.As(err, &providerError) && providerError.RequestID != "" {
+			result.ProviderRequestID = &providerError.RequestID
+		}
+	}
+	return result, err
+}
+
 func (p OpenAICompatibleProvider) ListModels(ctx context.Context) ([]domain.ProviderModel, error) {
 	response, err := p.do(ctx, http.MethodGet, "/models", nil)
 	if err != nil {
@@ -155,7 +261,7 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.Pr
 	for i, message := range request.Messages {
 		messages[i] = openAIChatMessage{Role: message.Role, Content: message.Content}
 	}
-	payload := openAIChatRequest{Model: request.Model, Messages: messages, MaxTokens: request.MaxOutputTokens}
+	payload := openAIChatRequest{Model: request.Model, Messages: messages, MaxTokens: request.MaxOutputTokens, Temperature: request.Temperature}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return domain.ProviderResponse{}, fmt.Errorf("marshal provider request: %w", err)
@@ -176,7 +282,7 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.Pr
 	if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
 		return domain.ProviderResponse{}, malformedResponse(err, response.Header)
 	}
-	if len(result.Choices) == 0 {
+	if len(result.Choices) == 0 || result.Choices[0].Message.Content == "" {
 		return domain.ProviderResponse{}, malformedResponse(errors.New("response has no choices"), response.Header)
 	}
 	var usage *domain.TokenUsage
@@ -184,13 +290,18 @@ func (p OpenAICompatibleProvider) Execute(ctx context.Context, request domain.Pr
 		normalized := result.Usage.normalize()
 		usage = &normalized
 	}
-	return domain.ProviderResponse{Text: result.Choices[0].Message.Content, Usage: usage, RequestID: requestID(response.Header)}, nil
+	var cost *float64
+	if result.Usage != nil {
+		cost = result.Usage.Cost
+	}
+	return domain.ProviderResponse{Text: result.Choices[0].Message.Content, Usage: usage, RequestID: requestID(response.Header), ActualCostUSD: cost}, nil
 }
 
 type openAIChatRequest struct {
-	Model     string              `json:"model"`
-	Messages  []openAIChatMessage `json:"messages"`
-	MaxTokens int                 `json:"max_tokens,omitempty"`
+	Model       string              `json:"model"`
+	Messages    []openAIChatMessage `json:"messages"`
+	MaxTokens   int                 `json:"max_tokens,omitempty"`
+	Temperature float64             `json:"temperature,omitempty"`
 }
 
 type openAIChatMessage struct {
@@ -199,18 +310,26 @@ type openAIChatMessage struct {
 }
 
 type openAIUsage struct {
-	PromptTokens  int `json:"prompt_tokens"`
-	CachedDetails struct {
-		CachedTokens int `json:"cached_tokens"`
+	PromptTokens  *int `json:"prompt_tokens"`
+	CachedDetails *struct {
+		CachedTokens *int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
-	CompletionTokens int `json:"completion_tokens"`
-	ReasoningDetails struct {
-		ReasoningTokens int `json:"reasoning_tokens"`
+	CompletionTokens *int     `json:"completion_tokens"`
+	Cost             *float64 `json:"cost"`
+	ReasoningDetails *struct {
+		ReasoningTokens *int `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`
 }
 
 func (u openAIUsage) normalize() domain.TokenUsage {
-	return domain.TokenUsage{InputTokens: u.PromptTokens, CachedTokens: u.CachedDetails.CachedTokens, OutputTokens: u.CompletionTokens, ReasoningTokens: u.ReasoningDetails.ReasoningTokens}
+	usage := domain.TokenUsage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens}
+	if u.CachedDetails != nil {
+		usage.CachedTokens = u.CachedDetails.CachedTokens
+	}
+	if u.ReasoningDetails != nil {
+		usage.ReasoningTokens = u.ReasoningDetails.ReasoningTokens
+	}
+	return usage
 }
 
 func (p OpenAICompatibleProvider) do(ctx context.Context, method, endpoint string, body []byte) (*http.Response, error) {
