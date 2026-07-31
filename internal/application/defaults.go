@@ -182,6 +182,10 @@ execution_profiles:
     max_output_tokens: 1200
     temperature: 0.2
     tool_calling: false
+    json_output: false
+    vision: false
+    retry_policy: none
+    quality_tier: experimental
 
   - id: deepseek-chat-default
     model: deepseek/deepseek-chat
@@ -191,6 +195,10 @@ execution_profiles:
     max_output_tokens: 2000
     temperature: 0.2
     tool_calling: true
+    json_output: false
+    vision: false
+    retry_policy: once
+    quality_tier: standard
 
   - id: openai-mini-default
     model: openai/gpt-5.4-mini
@@ -200,6 +208,24 @@ execution_profiles:
     max_output_tokens: 2400
     temperature: 0.2
     tool_calling: true
+    json_output: true
+    vision: false
+    retry_policy: once
+    quality_tier: standard
+
+  - id: openai-mini-high-reasoning
+    model: openai/gpt-5.4-mini
+    enabled: false
+    reasoning:
+      mode: high
+      effort: high
+    max_output_tokens: 4000
+    temperature: 0.1
+    tool_calling: true
+    json_output: true
+    vision: false
+    retry_policy: once
+    quality_tier: high
 `
 
 const defaultUserProfileYAML = `schema_version: 1

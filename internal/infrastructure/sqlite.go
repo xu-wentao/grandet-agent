@@ -22,7 +22,7 @@ type SQLiteMigrator struct {
 }
 
 func NewSQLiteMigrator(clock domain.Clock) SQLiteMigrator {
-	return SQLiteMigrator{clock: clock, migrations: []Migration{{Version: 1, Up: createWorkspaceVersions}, {Version: 2, Up: createTelemetryTables}}}
+	return SQLiteMigrator{clock: clock, migrations: []Migration{{Version: 1, Up: createWorkspaceVersions}, {Version: 2, Up: createTelemetryTables}, {Version: 3, Up: createRegistryTables}}}
 }
 
 func (m SQLiteMigrator) Migrate(path string) error {
@@ -98,6 +98,24 @@ func createTelemetryTables(tx *sql.Tx) error {
 		`CREATE INDEX trajectories_session_profile ON trajectories(session_id, selected_execution_profile_id, status)`,
 		`CREATE INDEX tasks_trajectory_id ON tasks(trajectory_id)`,
 		`CREATE INDEX trajectory_events_trajectory_id ON trajectory_events(trajectory_id, id)`,
+	}
+	for _, statement := range statements {
+		if _, err := tx.Exec(statement); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createRegistryTables(tx *sql.Tx) error {
+	statements := []string{
+		`CREATE TABLE providers (id TEXT PRIMARY KEY, provider_type TEXT NOT NULL, base_url TEXT NOT NULL, enabled INTEGER NOT NULL, source_metadata_json TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+		`CREATE TABLE models (id TEXT PRIMARY KEY, provider_id TEXT NOT NULL, upstream_model_name TEXT NOT NULL, enabled INTEGER NOT NULL, lifecycle_state TEXT NOT NULL, is_free INTEGER NOT NULL, context_window INTEGER, capability_json TEXT NOT NULL, source_metadata_json TEXT NOT NULL, source TEXT NOT NULL, discovered_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(provider_id) REFERENCES providers(id))`,
+		`CREATE TABLE execution_profiles (id TEXT PRIMARY KEY, model_id TEXT NOT NULL, enabled INTEGER NOT NULL, reasoning_mode TEXT NOT NULL, reasoning_effort TEXT NOT NULL, max_output_tokens INTEGER NOT NULL, tool_calling INTEGER NOT NULL, json_output INTEGER NOT NULL, vision INTEGER NOT NULL, retry_policy TEXT NOT NULL, quality_tier TEXT NOT NULL, profile_config_json TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL, FOREIGN KEY(model_id) REFERENCES models(id))`,
+		`CREATE TABLE model_prices (id INTEGER PRIMARY KEY AUTOINCREMENT, model_id TEXT NOT NULL, input_per_million REAL, cached_input_per_million REAL, output_per_million REAL, reasoning_per_million REAL, effective_from TEXT NOT NULL, effective_to TEXT, source TEXT NOT NULL, FOREIGN KEY(model_id) REFERENCES models(id))`,
+		`CREATE UNIQUE INDEX models_provider_upstream_name ON models(provider_id, upstream_model_name)`,
+		`CREATE INDEX execution_profiles_model_enabled ON execution_profiles(model_id, enabled)`,
+		`CREATE INDEX model_prices_current ON model_prices(model_id, effective_to)`,
 	}
 	for _, statement := range statements {
 		if _, err := tx.Exec(statement); err != nil {
