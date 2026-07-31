@@ -1,0 +1,38 @@
+name: Feature
+description: Propose a narrowly scoped, observable capability.
+title: "[Feature] "
+labels: [feature]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Read the [architecture](https://github.com/xu-wentao/grandet-agent/blob/main/docs/architecture.md) and [business logic](https://github.com/xu-wentao/grandet-agent/blob/main/docs/business-logic.md) first. Describe implemented work separately from roadmap ideas.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What user problem does this solve?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Give the smallest observable outcome and acceptance criteria.
+    validations:
+      required: true
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - label: This changes trajectory cost, trace, routing, or policy behavior.
+        - label: This changes schema, configuration, provider behavior, or migration compatibility.
+        - label: This needs a documentation or example configuration update.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Which focused test or manual CLI check proves the behavior?
+    validations:
+      required: true

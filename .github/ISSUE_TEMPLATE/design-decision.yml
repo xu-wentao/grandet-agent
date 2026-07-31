@@ -1,0 +1,37 @@
+name: Design decision
+description: Propose or revise an architectural decision before implementation.
+title: "[Design] "
+labels: [design]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Ground this proposal in the [architecture](https://github.com/xu-wentao/grandet-agent/blob/main/docs/architecture.md) and [business logic](https://github.com/xu-wentao/grandet-agent/blob/main/docs/business-logic.md). Keep future design separate from current implementation.
+  - type: textarea
+    id: decision
+    attributes:
+      label: Decision
+      description: State the decision to make in one or two sentences.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and alternatives
+      description: Explain the constraint, alternatives considered, and why they are insufficient.
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Cost, trace, policy, and compatibility impact
+      description: Cover trajectory economics, traceability, policy behavior, schemas, configurations, providers, and migrations as applicable.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Define the smallest implementation and evidence needed to adopt this decision.
+    validations:
+      required: true
