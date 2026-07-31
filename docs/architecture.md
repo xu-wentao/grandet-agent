@@ -16,6 +16,16 @@ provider + model + reasoning mode + token limits + tool capability + cache state
 
 GrandetAgent runs locally, stores all decisions and feedback locally, and exposes its behavior through CLI commands and versioned YAML policies.
 
+## Package Boundaries and Conventions
+
+`internal/domain` contains pure business contracts and may import only the Go standard library. `internal/application` owns use cases and may depend on domain contracts, never CLI or infrastructure. `internal/infrastructure` supplies adapters for those contracts. `internal/cli` is the composition root: it parses input, wires adapters, and calls application use cases.
+
+Package names describe the responsibility (`domain`, `application`, `infrastructure`, `cli`), not a transport or vendor. Wrap an operation failure at the boundary that adds useful context, using `%w` (for example, `fmt.Errorf("migrate database: %w", err)`); do not wrap an error again without adding context.
+
+Fast tests run with `go test ./...`. SQLite adapter tests are isolated behind the `integration` build tag and run with `go test -tags=integration ./internal/infrastructure`. Dependency conformance tests run in the fast suite and reject forbidden imports.
+
+`internal/testkit` provides configurable clock, ID generator, provider, repository, and validator doubles. Keep these test-only and add a production port only when a use case needs one.
+
 ## 2. Design Philosophy
 
 ### 2.1 Stinginess is rational optimization, not cheapest-call obsession

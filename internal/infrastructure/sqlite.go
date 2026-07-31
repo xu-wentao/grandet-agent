@@ -21,6 +21,8 @@ type SQLiteMigrator struct {
 	migrations []Migration
 }
 
+var _ application.WorkspaceDatabase = SQLiteMigrator{}
+
 func NewSQLiteMigrator(clock domain.Clock) SQLiteMigrator {
 	return SQLiteMigrator{clock: clock, migrations: []Migration{{Version: 1, Up: createWorkspaceVersions}, {Version: 2, Up: createTelemetryTables}}}
 }

@@ -10,9 +10,13 @@ import (
 
 type Clock struct{}
 
+var _ domain.Clock = Clock{}
+
 func (Clock) Now() time.Time { return time.Now() }
 
 type IDGenerator struct{}
+
+var _ domain.IDGenerator = IDGenerator{}
 
 func (IDGenerator) New() string {
 	bytes := make([]byte, 16)

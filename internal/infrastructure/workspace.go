@@ -9,6 +9,8 @@ import (
 
 type Filesystem struct{}
 
+var _ application.WorkspaceFilesystem = Filesystem{}
+
 func (Filesystem) MkdirAll(path string) error { return os.MkdirAll(path, 0o755) }
 
 func (Filesystem) WriteFile(path, content string, force bool) (bool, error) {
