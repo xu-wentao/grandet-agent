@@ -38,6 +38,15 @@ func Redact(value string, sensitiveFields ...string) string {
 	return value
 }
 
+func redactValues(value string, values ...string) string {
+	for _, secret := range values {
+		if secret != "" {
+			value = strings.ReplaceAll(value, secret, redacted)
+		}
+	}
+	return value
+}
+
 // ProviderFailure is the provider adapter input for stable error mapping.
 type ProviderFailure struct {
 	Provider   string

@@ -138,6 +138,24 @@ func TestOpenAICompatibleProviderFailureRedactsBasicCredentials(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderFailureRedactsConfiguredAPIKey(t *testing.T) {
+	const apiKey = "arbitrary-format-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "invalid key "+apiKey, http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	provider, err := (OpenAICompatibleFactory{}).NewOpenAICompatible(application.ProviderConfig{BaseURL: server.URL + "/v1"}, apiKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = provider.Execute(context.Background(), domain.ProviderRequest{Model: "test"})
+	normalized, ok := domain.AsError(err)
+	if !ok || normalized.Provider == nil || strings.Contains(normalized.Provider.Message, apiKey) {
+		t.Fatalf("provider diagnostic leaked configured API key: %#v", err)
+	}
+}
+
 func TestOpenAICompatibleProviderHealthDoesNotGenerate(t *testing.T) {
 	provider := testOpenAIProvider(t, func(writer http.ResponseWriter, request *http.Request) {
 		if request.Method != http.MethodGet || request.URL.Path != "/v1/models" {

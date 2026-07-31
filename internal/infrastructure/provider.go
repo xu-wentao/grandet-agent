@@ -248,12 +248,14 @@ func (p OpenAICompatibleProvider) do(ctx context.Context, method, endpoint strin
 }
 
 func (p OpenAICompatibleProvider) failure(cause *domain.ProviderError, statusCode int) *domain.Error {
+	safeCause := *cause
+	safeCause.Detail = redactValues(safeCause.Detail, p.apiKey)
 	return NormalizeProviderFailure(ProviderFailure{
 		Provider:   p.name,
 		StatusCode: statusCode,
-		RequestID:  cause.RequestID,
-		Cause:      cause,
-	}, domain.Correlation{}, p.apiKey)
+		RequestID:  safeCause.RequestID,
+		Cause:      &safeCause,
+	}, domain.Correlation{})
 }
 
 func classifyStatus(status int, detail string) domain.ProviderErrorKind {
