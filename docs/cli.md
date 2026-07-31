@@ -18,6 +18,12 @@ Global options:
 --no-color
 ```
 
+Errors use stable codes. `--output json` emits `code`, `message`, `retryable`,
+and available trajectory, step, provider request, and policy version IDs.
+Credentials are redacted from all error output. Exit codes are 2 for
+configuration, 3 for validation, 4 for budget, 5 for routing, 6 for provider,
+7 for persistence, 8 for policy, and 1 for unexpected failures.
+
 ## 2. Workspace
 
 ### init

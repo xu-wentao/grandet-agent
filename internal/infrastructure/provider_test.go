@@ -3,7 +3,6 @@ package infrastructure
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -77,7 +76,7 @@ func TestOpenAICompatibleProviderNormalizesFailures(t *testing.T) {
 		name    string
 		handler http.HandlerFunc
 		context func() (context.Context, context.CancelFunc)
-		want    domain.ProviderErrorKind
+		want    domain.ErrorCode
 	}{
 		{
 			name:    "timeout",
@@ -85,7 +84,7 @@ func TestOpenAICompatibleProviderNormalizesFailures(t *testing.T) {
 			context: func() (context.Context, context.CancelFunc) {
 				return context.WithTimeout(context.Background(), time.Millisecond)
 			},
-			want: domain.ProviderTimeout,
+			want: domain.CodeProviderTimeout,
 		},
 		{
 			name: "rate limit",
@@ -93,7 +92,7 @@ func TestOpenAICompatibleProviderNormalizesFailures(t *testing.T) {
 				http.Error(writer, "slow down", http.StatusTooManyRequests)
 			},
 			context: func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
-			want:    domain.ProviderRateLimit,
+			want:    domain.CodeProviderRateLimited,
 		},
 		{
 			name: "authentication",
@@ -101,13 +100,13 @@ func TestOpenAICompatibleProviderNormalizesFailures(t *testing.T) {
 				http.Error(writer, "bad key", http.StatusUnauthorized)
 			},
 			context: func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
-			want:    domain.ProviderAuthentication,
+			want:    domain.CodeProviderRejected,
 		},
 		{
 			name:    "malformed response",
 			handler: func(writer http.ResponseWriter, request *http.Request) { writer.Write([]byte(`{"choices":`)) },
 			context: func() (context.Context, context.CancelFunc) { return context.WithCancel(context.Background()) },
-			want:    domain.ProviderMalformedResponse,
+			want:    domain.CodeProviderUnavailable,
 		},
 	}
 	for _, test := range tests {
@@ -116,11 +115,44 @@ func TestOpenAICompatibleProviderNormalizesFailures(t *testing.T) {
 			ctx, cancel := test.context()
 			defer cancel()
 			_, err := provider.Execute(ctx, domain.ProviderRequest{Model: "test"})
-			var providerError *domain.ProviderError
-			if !errors.As(err, &providerError) || providerError.Kind != test.want {
+			providerError, ok := domain.AsError(err)
+			if !ok || providerError.Code != test.want {
 				t.Fatalf("error = %#v, want %s", err, test.want)
 			}
 		})
+	}
+}
+
+func TestOpenAICompatibleProviderFailureRedactsBasicCredentials(t *testing.T) {
+	provider := testOpenAIProvider(t, func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "Authorization: Basic dXNlcjpwYXNz", http.StatusTooManyRequests)
+	})
+
+	_, err := provider.Execute(context.Background(), domain.ProviderRequest{Model: "test"})
+	normalized, ok := domain.AsError(err)
+	if !ok || normalized.Code != domain.CodeProviderRateLimited {
+		t.Fatalf("error = %#v", err)
+	}
+	if strings.Contains(normalized.Provider.Message, "dXNlcjpwYXNz") {
+		t.Fatalf("provider diagnostic leaked credentials: %q", normalized.Provider.Message)
+	}
+}
+
+func TestOpenAICompatibleProviderFailureRedactsConfiguredAPIKey(t *testing.T) {
+	const apiKey = "arbitrary-format-secret"
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Error(writer, "invalid key "+apiKey, http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	provider, err := (OpenAICompatibleFactory{}).NewOpenAICompatible(application.ProviderConfig{BaseURL: server.URL + "/v1"}, apiKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = provider.Execute(context.Background(), domain.ProviderRequest{Model: "test"})
+	normalized, ok := domain.AsError(err)
+	if !ok || normalized.Provider == nil || strings.Contains(normalized.Provider.Message, apiKey) {
+		t.Fatalf("provider diagnostic leaked configured API key: %#v", err)
 	}
 }
 

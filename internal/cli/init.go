@@ -3,15 +3,15 @@ package cli
 import (
 	"flag"
 	"fmt"
-	"os"
+	"io"
 
 	"github.com/xu-wentao/grandet-agent/internal/application"
 	"github.com/xu-wentao/grandet-agent/internal/infrastructure"
 )
 
-func runInit(args []string) error {
+func runInit(args []string, diagnostics io.Writer) error {
 	fs := flag.NewFlagSet("init", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
+	fs.SetOutput(diagnostics)
 
 	var dryRun bool
 	var force bool
@@ -22,7 +22,7 @@ func runInit(args []string) error {
 	fs.StringVar(&home, "home", "", "GrandetAgent home directory")
 
 	if err := fs.Parse(args); err != nil {
-		return err
+		return application.ValidationError(err)
 	}
 
 	if home == "" {
