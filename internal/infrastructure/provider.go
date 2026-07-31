@@ -194,8 +194,9 @@ func (e openAICompatibleExecutor) Execute(ctx context.Context, prompt string) (d
 		result.ProviderRequestID = &response.RequestID
 	}
 	if response.Usage != nil {
-		input, output, reasoning := response.Usage.InputTokens, response.Usage.OutputTokens, response.Usage.ReasoningTokens
-		result.InputTokens, result.OutputTokens, result.ReasoningTokens = &input, &output, &reasoning
+		result.InputTokens = response.Usage.InputTokens
+		result.OutputTokens = response.Usage.OutputTokens
+		result.ReasoningTokens = response.Usage.ReasoningTokens
 	}
 	if err != nil {
 		var providerError *domain.ProviderError
@@ -309,19 +310,26 @@ type openAIChatMessage struct {
 }
 
 type openAIUsage struct {
-	PromptTokens  int `json:"prompt_tokens"`
-	CachedDetails struct {
-		CachedTokens int `json:"cached_tokens"`
+	PromptTokens  *int `json:"prompt_tokens"`
+	CachedDetails *struct {
+		CachedTokens *int `json:"cached_tokens"`
 	} `json:"prompt_tokens_details"`
-	CompletionTokens int      `json:"completion_tokens"`
+	CompletionTokens *int     `json:"completion_tokens"`
 	Cost             *float64 `json:"cost"`
-	ReasoningDetails struct {
-		ReasoningTokens int `json:"reasoning_tokens"`
+	ReasoningDetails *struct {
+		ReasoningTokens *int `json:"reasoning_tokens"`
 	} `json:"completion_tokens_details"`
 }
 
 func (u openAIUsage) normalize() domain.TokenUsage {
-	return domain.TokenUsage{InputTokens: u.PromptTokens, CachedTokens: u.CachedDetails.CachedTokens, OutputTokens: u.CompletionTokens, ReasoningTokens: u.ReasoningDetails.ReasoningTokens}
+	usage := domain.TokenUsage{InputTokens: u.PromptTokens, OutputTokens: u.CompletionTokens}
+	if u.CachedDetails != nil {
+		usage.CachedTokens = u.CachedDetails.CachedTokens
+	}
+	if u.ReasoningDetails != nil {
+		usage.ReasoningTokens = u.ReasoningDetails.ReasoningTokens
+	}
+	return usage
 }
 
 func (p OpenAICompatibleProvider) do(ctx context.Context, method, endpoint string, body []byte) (*http.Response, error) {

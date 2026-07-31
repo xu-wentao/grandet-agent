@@ -47,10 +47,10 @@ type ProviderRequest struct {
 }
 
 type TokenUsage struct {
-	InputTokens     int
-	CachedTokens    int
-	OutputTokens    int
-	ReasoningTokens int
+	InputTokens     *int
+	CachedTokens    *int
+	OutputTokens    *int
+	ReasoningTokens *int
 }
 
 type ProviderResponse struct {

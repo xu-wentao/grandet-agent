@@ -53,8 +53,22 @@ func TestOpenAICompatibleProviderExecuteExtractsUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if response.Text != "hello" || response.RequestID != "req_123" || response.Usage == nil || *response.Usage != (domain.TokenUsage{InputTokens: 11, CachedTokens: 3, OutputTokens: 7, ReasoningTokens: 2}) {
+	if response.Text != "hello" || response.RequestID != "req_123" || response.Usage == nil || response.Usage.InputTokens == nil || *response.Usage.InputTokens != 11 || response.Usage.CachedTokens == nil || *response.Usage.CachedTokens != 3 || response.Usage.OutputTokens == nil || *response.Usage.OutputTokens != 7 || response.Usage.ReasoningTokens == nil || *response.Usage.ReasoningTokens != 2 {
 		t.Fatalf("unexpected response: %#v", response)
+	}
+}
+
+func TestOpenAICompatibleExecutorLeavesPartialUsageUnknown(t *testing.T) {
+	provider := testOpenAIProvider(t, func(writer http.ResponseWriter, request *http.Request) {
+		writer.Write([]byte(`{"choices":[{"message":{"content":"hello"}}],"usage":{"prompt_tokens":11,"completion_tokens":7}}`))
+	})
+
+	result, err := (openAICompatibleExecutor{provider: provider}).Execute(context.Background(), "hi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.InputTokens == nil || *result.InputTokens != 11 || result.OutputTokens == nil || *result.OutputTokens != 7 || result.ReasoningTokens != nil {
+		t.Fatalf("unexpected result: %#v", result)
 	}
 }
 
