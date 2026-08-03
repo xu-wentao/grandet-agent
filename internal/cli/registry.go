@@ -157,8 +157,16 @@ func runProfileList(args []string) error {
 	if err != nil {
 		return err
 	}
+	eligibleProfiles, err := registry.EligibleExecutionProfiles(context.Background(), false)
+	if err != nil {
+		return err
+	}
+	eligible := make(map[string]bool, len(eligibleProfiles))
+	for _, profile := range eligibleProfiles {
+		eligible[profile.ID] = true
+	}
 	for _, profile := range profiles {
-		fmt.Printf("%s\t%s/%s\t%s\t%d\t%t\n", profile.ID, profile.Provider, profile.Model, profile.ReasoningMode, profile.MaxOutputTokens, profile.EligibleForAutomaticRouting(false))
+		fmt.Printf("%s\t%s/%s\t%s\t%d\t%t\n", profile.ID, profile.Provider, profile.Model, profile.ReasoningMode, profile.MaxOutputTokens, eligible[profile.ID])
 	}
 	return nil
 }
