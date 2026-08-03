@@ -46,7 +46,7 @@ type ModelExecutionProfile struct {
 }
 
 func (p ModelExecutionProfile) EligibleForAutomaticRouting(allowUnknownPaid bool) bool {
-	return p.Enabled && p.LifecycleState != "QUARANTINED" && p.LifecycleState != "DISABLED" && (p.IsFree || p.PriceKnown || allowUnknownPaid)
+	return p.Enabled && p.LifecycleState == "ACTIVE" && (p.IsFree || p.PriceKnown || allowUnknownPaid)
 }
 
 // ExecutionProfileReader intentionally exposes profiles, not raw provider models.

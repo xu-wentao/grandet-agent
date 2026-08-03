@@ -158,11 +158,12 @@ func (r SQLiteRegistry) Sync(ctx context.Context, provider application.ProviderC
 }
 
 func (r SQLiteRegistry) recordPrice(ctx context.Context, tx *sql.Tx, providerID, upstreamName string, price *domain.ModelPrice) error {
-	if price == nil {
-		return nil
-	}
 	var modelID string
 	if err := tx.QueryRowContext(ctx, `SELECT id FROM models WHERE provider_id = ? AND upstream_model_name = ?`, providerID, upstreamName).Scan(&modelID); err != nil {
+		return err
+	}
+	if price == nil {
+		_, err := tx.ExecContext(ctx, `UPDATE model_prices SET effective_to = ? WHERE model_id = ? AND effective_to IS NULL`, r.now(), modelID)
 		return err
 	}
 	var current struct {
@@ -240,11 +241,11 @@ func (r SQLiteRegistry) SetModelState(ctx context.Context, id, state string) err
 }
 
 func (r SQLiteRegistry) ListExecutionProfiles(ctx context.Context) ([]domain.ModelExecutionProfile, error) {
-	return r.profiles(ctx, "")
+	return r.profiles(ctx, "", false)
 }
 
 func (r SQLiteRegistry) ExecutionProfile(ctx context.Context, id string) (domain.ModelExecutionProfile, error) {
-	profiles, err := r.profiles(ctx, id)
+	profiles, err := r.profiles(ctx, id, false)
 	if err != nil {
 		return domain.ModelExecutionProfile{}, err
 	}
@@ -255,7 +256,7 @@ func (r SQLiteRegistry) ExecutionProfile(ctx context.Context, id string) (domain
 }
 
 func (r SQLiteRegistry) EligibleExecutionProfiles(ctx context.Context, allowUnknownPaid bool) ([]domain.ModelExecutionProfile, error) {
-	profiles, err := r.ListExecutionProfiles(ctx)
+	profiles, err := r.profiles(ctx, "", true)
 	if err != nil {
 		return nil, err
 	}
@@ -268,17 +269,27 @@ func (r SQLiteRegistry) EligibleExecutionProfiles(ctx context.Context, allowUnkn
 	return eligible, nil
 }
 
-func (r SQLiteRegistry) profiles(ctx context.Context, id string) ([]domain.ModelExecutionProfile, error) {
+func (r SQLiteRegistry) profiles(ctx context.Context, id string, routingCandidates bool) ([]domain.ModelExecutionProfile, error) {
 	db, err := r.open()
 	if err != nil {
 		return nil, err
 	}
 	defer db.Close()
-	query := `SELECT e.id, m.provider_id, m.upstream_model_name, e.reasoning_mode, e.reasoning_effort, e.max_output_tokens, e.tool_calling, e.json_output, e.vision, e.retry_policy, e.quality_tier, e.enabled, m.lifecycle_state, m.is_free, EXISTS(SELECT 1 FROM model_prices p WHERE p.model_id = m.id AND p.effective_to IS NULL AND p.input_per_million IS NOT NULL AND p.output_per_million IS NOT NULL) FROM execution_profiles e JOIN models m ON m.id = e.model_id`
+	query := `SELECT e.id, m.provider_id, m.upstream_model_name, e.reasoning_mode, e.reasoning_effort, e.max_output_tokens, e.tool_calling, e.json_output, e.vision, e.retry_policy, e.quality_tier, e.enabled, m.lifecycle_state, m.is_free, EXISTS(SELECT 1 FROM model_prices p WHERE p.model_id = m.id AND p.effective_to IS NULL AND p.input_per_million IS NOT NULL AND p.output_per_million IS NOT NULL) FROM execution_profiles e JOIN models m ON m.id = e.model_id JOIN providers p ON p.id = m.provider_id`
 	args := []any{}
+	where := ""
+	if routingCandidates {
+		where = `p.enabled AND m.enabled`
+	}
 	if id != "" {
-		query += ` WHERE e.id = ?`
+		if where != "" {
+			where += ` AND `
+		}
+		where += `e.id = ?`
 		args = append(args, id)
+	}
+	if where != "" {
+		query += ` WHERE ` + where
 	}
 	query += ` ORDER BY e.id`
 	rows, err := db.QueryContext(ctx, query, args...)

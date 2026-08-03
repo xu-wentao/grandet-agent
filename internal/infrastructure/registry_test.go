@@ -68,13 +68,28 @@ execution_profiles:
 	if err != nil || len(profiles) != 2 || profiles[0].ReasoningMode != "disabled" || profiles[1].ReasoningMode != "high" {
 		t.Fatalf("eligible profiles = %#v, %v", profiles, err)
 	}
-	clock.now = clock.now.Add(time.Hour)
-	sync(3)
+	if err := registry.UpsertProviders(context.Background(), []application.ProviderConfig{{Name: "local", Type: "openai_compatible", BaseURL: "https://example.test/v1", Enabled: false}}); err != nil {
+		t.Fatal(err)
+	}
+	if profiles, err := registry.EligibleExecutionProfiles(context.Background(), false); err != nil || len(profiles) != 0 {
+		t.Fatalf("disabled provider profiles = %#v, %v", profiles, err)
+	}
+	if err := registry.UpsertProviders(context.Background(), []application.ProviderConfig{config}); err != nil {
+		t.Fatal(err)
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	if _, err := db.Exec(`UPDATE models SET enabled = 0 WHERE id = 'local/demo'`); err != nil {
+		t.Fatal(err)
+	}
+	if profiles, err := registry.EligibleExecutionProfiles(context.Background(), false); err != nil || len(profiles) != 0 {
+		t.Fatalf("disabled model profiles = %#v, %v", profiles, err)
+	}
+	clock.now = clock.now.Add(time.Hour)
+	sync(3)
 	var prices, current int
 	if err := db.QueryRow(`SELECT COUNT(*), COALESCE(SUM(effective_to IS NULL), 0) FROM model_prices WHERE model_id = 'local/demo'`).Scan(&prices, &current); err != nil {
 		t.Fatal(err)
@@ -82,8 +97,18 @@ execution_profiles:
 	if prices != 2 || current != 1 {
 		t.Fatalf("price history = %d rows, %d current; want 2, 1", prices, current)
 	}
+	clock.now = clock.now.Add(time.Hour)
+	if err := registry.Sync(context.Background(), config, []domain.ProviderModel{{ID: "demo"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.QueryRow(`SELECT COALESCE(SUM(effective_to IS NULL), 0) FROM model_prices WHERE model_id = 'local/demo'`).Scan(&current); err != nil {
+		t.Fatal(err)
+	}
+	if current != 0 {
+		t.Fatalf("current prices after unknown sync = %d; want 0", current)
+	}
 	models, err := registry.ListModels(context.Background())
-	if err != nil || len(models) != 1 || !models[0].Enabled || models[0].LifecycleState != "ACTIVE" {
+	if err != nil || len(models) != 1 || models[0].Enabled || models[0].LifecycleState != "ACTIVE" || models[0].PriceKnown {
 		t.Fatalf("manual model override was erased: %#v, %v", models, err)
 	}
 }
