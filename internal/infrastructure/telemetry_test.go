@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func TestTelemetryStartIsAtomicAndCrashSafe(t *testing.T) {
 	}
 	repository := NewSQLiteTelemetryRepository(path, testClock{})
 	started := time.Date(2026, 1, 1, 1, 2, 3, 0, time.UTC)
-	run := domain.BaselineRun{SessionID: "session-1", TrajectoryID: "trajectory-1", TaskID: "task-1", StepID: "step-1", ProfileID: "fixed", TaskFamily: "summarization", PolicyVersion: "stingy-v1", PromptHash: "hash", StartedAt: started}
+	run := domain.BaselineRun{SessionID: "session-1", TrajectoryID: "trajectory-1", TaskID: "task-1", StepID: "step-1", ProfileID: "fixed", TaskFamily: "summarization", TaskProfile: domain.ClassifyTask(domain.TaskInput{Prompt: "Summarize this"}), PolicyVersion: "stingy-v1", PromptHash: "hash", StartedAt: started}
 	if err := repository.Start(context.Background(), run); err != nil {
 		t.Fatal(err)
 	}
@@ -36,6 +37,10 @@ func TestTelemetryStartIsAtomicAndCrashSafe(t *testing.T) {
 	var status string
 	if err := db.QueryRow(`SELECT status FROM trajectories WHERE id = 'trajectory-1'`).Scan(&status); err != nil || status != "RUNNING" {
 		t.Fatalf("partial trajectory status = %q, %v", status, err)
+	}
+	var profile string
+	if err := db.QueryRow(`SELECT task_profile_json FROM tasks WHERE id = 'task-1'`).Scan(&profile); err != nil || !strings.Contains(profile, `"task_family_version":"v1"`) {
+		t.Fatalf("task profile = %q, %v", profile, err)
 	}
 
 	duplicate := run

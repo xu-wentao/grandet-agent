@@ -189,6 +189,15 @@ Recommended later alias:
 grandet trajectory show <trajectory-id>
 ```
 
+The current debug classifier is local-only and does not require an initialized workspace or a model API:
+
+```bash
+grandet task classify "Summarize this report"
+grandet task classify --tool kubectl --context pod.yaml --schema result.json "Diagnose this Kubernetes error"
+```
+
+It emits a versioned `TaskProfile`, including confidence and L0/L1 evidence for every field. `--task-family` is an explicit stable-taxonomy override.
+
 ## 9. Feedback
 
 ```bash

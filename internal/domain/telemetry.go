@@ -10,6 +10,7 @@ type BaselineRun struct {
 	StepID          string
 	ProfileID       string
 	TaskFamily      string
+	TaskProfile     TaskProfile
 	PolicyVersion   string
 	PromptHash      string
 	CommandBudgetUS *float64

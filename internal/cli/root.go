@@ -13,6 +13,7 @@ Usage:
 Available Commands:
   init      Initialize local GrandetAgent workspace
   run       Execute a fixed-profile baseline trajectory
+  task      Classify a task with local deterministic rules
   analyze   Report persisted baseline trajectories
   provider  List or test configured providers
   version   Print GrandetAgent version
@@ -50,6 +51,8 @@ func run(args []string) error {
 		return runInit(args[1:])
 	case "run":
 		return runBaseline(args[1:])
+	case "task":
+		return runTask(args[1:])
 	case "analyze":
 		return runAnalyze(args[1:])
 	case "provider":

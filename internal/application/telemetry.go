@@ -53,9 +53,10 @@ func (r BaselineRunner) Start(ctx context.Context, options RunOptions) (domain.B
 	if options.Prompt == "" {
 		return domain.BaselineRun{}, fmt.Errorf("prompt is required")
 	}
-	if options.TaskFamily == "" {
-		options.TaskFamily = "general_qa"
+	if options.TaskFamily != "" && !domain.IsTaskFamily(domain.TaskFamily(options.TaskFamily)) {
+		return domain.BaselineRun{}, fmt.Errorf("unknown task family %q", options.TaskFamily)
 	}
+	profile := domain.ClassifyTask(domain.TaskInput{Prompt: options.Prompt, TaskFamilyOverride: domain.TaskFamily(options.TaskFamily)})
 	sessionID := options.SessionID
 	if sessionID == "" {
 		sessionID = r.ids.New()
@@ -63,7 +64,7 @@ func (r BaselineRunner) Start(ctx context.Context, options RunOptions) (domain.B
 	now := r.clock.Now().UTC()
 	run := domain.BaselineRun{
 		SessionID: sessionID, TrajectoryID: r.ids.New(), TaskID: r.ids.New(), StepID: r.ids.New(),
-		ProfileID: options.ProfileID, TaskFamily: options.TaskFamily, PolicyVersion: "stingy-v1", PromptHash: promptHash(options.Prompt),
+		ProfileID: options.ProfileID, TaskFamily: string(profile.TaskFamily.Value), TaskProfile: profile, PolicyVersion: "stingy-v1", PromptHash: promptHash(options.Prompt),
 		CommandBudgetUS: options.CommandBudgetUS, StartedAt: now,
 	}
 	if err := r.repository.Start(ctx, run); err != nil {

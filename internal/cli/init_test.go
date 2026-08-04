@@ -137,6 +137,10 @@ func TestRunAndAnalyzeBaseline(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	var snapshot string
+	if err := db.QueryRow(`SELECT k.task_profile_json FROM tasks k JOIN trajectories t ON t.id = k.trajectory_id WHERE t.session_id = ?`, "matching-session").Scan(&snapshot); err != nil || !strings.Contains(snapshot, `"schema_version":"task-profile/v1"`) {
+		t.Fatalf("task profile snapshot = %q, %v", snapshot, err)
+	}
 	for _, failure := range []struct{ prompt, requestID string }{{"http failure", "request-http-failure"}, {"no choices", "request-no-choices"}, {"empty message", "request-empty-message"}} {
 		if err := run([]string{"run", "--home", home, "--profile", "fixed-profile", "--session", failure.prompt, failure.prompt}); err == nil {
 			t.Fatalf("expected %q provider failure", failure.prompt)
@@ -148,6 +152,23 @@ func TestRunAndAnalyzeBaseline(t *testing.T) {
 		if trajectoryStatus != "FAILED" || callStatus != "FAILED" || requestID != failure.requestID {
 			t.Fatalf("%q persisted statuses/request ID = %q, %q, %q", failure.prompt, trajectoryStatus, callStatus, requestID)
 		}
+	}
+}
+
+func TestTaskClassifyUsesLocalRules(t *testing.T) {
+	context := filepath.Join(t.TempDir(), "pod.yaml")
+	if err := os.WriteFile(context, []byte("kind: Pod\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var err error
+	output := captureStdout(t, func() {
+		err = run([]string{"task", "classify", "Diagnose this Kubernetes error", "--context", context, "--tool", "kubectl", "--schema", "result.json"})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, `"value": "kubernetes_troubleshooting"`) || !strings.Contains(output, `"value": "json_schema"`) || !strings.Contains(output, `"l0:tool declarations"`) {
+		t.Fatalf("classification output = %s", output)
 	}
 }
 
