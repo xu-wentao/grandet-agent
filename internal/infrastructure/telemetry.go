@@ -323,13 +323,17 @@ func (r SQLiteTelemetryRepository) open() (*sql.DB, error) {
 
 func startRun(ctx context.Context, tx *sql.Tx, run domain.BaselineRun) error {
 	created := timestamp(run.StartedAt)
+	profile, err := json.Marshal(run.TaskProfile)
+	if err != nil {
+		return fmt.Errorf("encode task profile: %w", err)
+	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(id, status, active_execution_profile_id, policy_version, created_at, updated_at) VALUES(?, 'ACTIVE', ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET status = 'ACTIVE', active_execution_profile_id = excluded.active_execution_profile_id, policy_version = excluded.policy_version, updated_at = excluded.updated_at`, run.SessionID, run.ProfileID, run.PolicyVersion, created, created); err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO trajectories(id, session_id, status, prompt_hash, active_policy_version, selected_execution_profile_id, command_budget_usd, started_at) VALUES(?, ?, 'RUNNING', ?, ?, ?, ?, ?)`, run.TrajectoryID, run.SessionID, run.PromptHash, run.PolicyVersion, run.ProfileID, run.CommandBudgetUS, created); err != nil {
 		return fmt.Errorf("save trajectory: %w", err)
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id, trajectory_id, status, task_family, difficulty, created_at) VALUES(?, ?, 'RUNNING', ?, 0, ?)`, run.TaskID, run.TrajectoryID, run.TaskFamily, created); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO tasks(id, trajectory_id, status, task_family, difficulty, task_profile_json, created_at) VALUES(?, ?, 'RUNNING', ?, ?, ?, ?)`, run.TaskID, run.TrajectoryID, run.TaskFamily, run.TaskProfile.Difficulty.Value, string(profile), created); err != nil {
 		return fmt.Errorf("save task: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `INSERT INTO steps(id, task_id, sequence_no, step_type, status, execution_profile_id, started_at) VALUES(?, ?, 1, 'baseline', 'RUNNING', ?, ?)`, run.StepID, run.TaskID, run.ProfileID, created); err != nil {

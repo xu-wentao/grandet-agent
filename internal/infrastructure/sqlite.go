@@ -22,7 +22,7 @@ type SQLiteMigrator struct {
 }
 
 func NewSQLiteMigrator(clock domain.Clock) SQLiteMigrator {
-	return SQLiteMigrator{clock: clock, migrations: []Migration{{Version: 1, Up: createWorkspaceVersions}, {Version: 2, Up: createTelemetryTables}}}
+	return SQLiteMigrator{clock: clock, migrations: []Migration{{Version: 1, Up: createWorkspaceVersions}, {Version: 2, Up: createTelemetryTables}, {Version: 3, Up: addTaskProfileSnapshot}}}
 }
 
 func (m SQLiteMigrator) Migrate(path string) error {
@@ -105,6 +105,11 @@ func createTelemetryTables(tx *sql.Tx) error {
 		}
 	}
 	return nil
+}
+
+func addTaskProfileSnapshot(tx *sql.Tx) error {
+	_, err := tx.Exec(`ALTER TABLE tasks ADD COLUMN task_profile_json TEXT`)
+	return err
 }
 
 var _ application.WorkspaceDatabase = SQLiteMigrator{}

@@ -101,7 +101,7 @@ grandet analyze savings --baseline <profile-id>
 
 The repository has the workspace foundation plus an OpenAI-compatible provider health slice. `grandet init` creates versioned YAML defaults and a migration-managed SQLite database. `grandet provider list` loads `providers.yaml`; `grandet provider test <name>` checks its `/models` endpoint without generating tokens. Credentials are read only from the configured environment variable and are never stored. Existing generated files are preserved unless `--force` is used; unrelated workspace files are never removed.
 
-The telemetry baseline persists sessions, trajectories, tasks, steps, and append-only events. `grandet run --profile <profile-id> "..."` records a trajectory before executing the selected enabled OpenAI-compatible provider profile; `--task-family <family>` records a specific family and otherwise uses `general_qa`. Usage fields the provider omits remain unknown. `grandet analyze cost --last 7d` and `grandet analyze task-distribution --last 30d` report those records with session, profile, date, and outcome filters.
+The telemetry baseline persists sessions, trajectories, tasks, steps, and append-only events. `grandet task classify "..."` uses versioned local rules and prints the evidence-backed profile without calling a model API. `grandet run --profile <profile-id> "..."` snapshots that profile before executing the selected enabled OpenAI-compatible provider; `--task-family <family>` remains an explicit override. Usage fields the provider omits remain unknown. `grandet analyze cost --last 7d` and `grandet analyze task-distribution --last 30d` report those records with session, profile, date, and outcome filters.
 
 ## Development
 
