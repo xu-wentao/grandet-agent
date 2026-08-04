@@ -15,6 +15,8 @@ Available Commands:
   run       Execute a fixed-profile baseline trajectory
   analyze   Report persisted baseline trajectories
   provider  List or test configured providers
+  model     Sync, list, or manage registered models
+  profile   List or show execution profiles
   version   Print GrandetAgent version
   help      Print this help message
 
@@ -54,6 +56,10 @@ func run(args []string) error {
 		return runAnalyze(args[1:])
 	case "provider":
 		return runProvider(args[1:])
+	case "model":
+		return runModel(args[1:])
+	case "profile":
+		return runProfile(args[1:])
 	default:
 		return fmt.Errorf("unknown command %q\n\n%s", args[0], helpText)
 	}

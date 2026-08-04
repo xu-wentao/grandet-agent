@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -103,23 +104,37 @@ type OpenAICompatibleProvider struct {
 }
 
 type modelsFile struct {
+	SchemaVersion     int             `yaml:"schema_version"`
 	Models            []modelConfig   `yaml:"models"`
 	ExecutionProfiles []profileConfig `yaml:"execution_profiles"`
 }
 
 type modelConfig struct {
-	ID           string `yaml:"id"`
-	Provider     string `yaml:"provider"`
-	UpstreamName string `yaml:"upstream_name"`
-	Enabled      bool   `yaml:"enabled"`
+	ID             string   `yaml:"id"`
+	Provider       string   `yaml:"provider"`
+	UpstreamName   string   `yaml:"upstream_name"`
+	Enabled        bool     `yaml:"enabled"`
+	IsFree         bool     `yaml:"is_free"`
+	LifecycleState string   `yaml:"lifecycle_state"`
+	ContextWindow  *int     `yaml:"context_window"`
+	Capabilities   []string `yaml:"capabilities"`
 }
 
 type profileConfig struct {
-	ID              string  `yaml:"id"`
-	Model           string  `yaml:"model"`
-	Enabled         bool    `yaml:"enabled"`
+	ID        string `yaml:"id"`
+	Model     string `yaml:"model"`
+	Enabled   bool   `yaml:"enabled"`
+	Reasoning struct {
+		Mode   string `yaml:"mode"`
+		Effort string `yaml:"effort"`
+	} `yaml:"reasoning"`
 	MaxOutputTokens int     `yaml:"max_output_tokens"`
 	Temperature     float64 `yaml:"temperature"`
+	ToolCalling     bool    `yaml:"tool_calling"`
+	JSONOutput      bool    `yaml:"json_output"`
+	Vision          bool    `yaml:"vision"`
+	RetryPolicy     string  `yaml:"retry_policy"`
+	QualityTier     string  `yaml:"quality_tier"`
 }
 
 // LoadProviderExecutor resolves an enabled fixed profile through the shared provider adapter.
@@ -223,7 +238,19 @@ func (p OpenAICompatibleProvider) ListModels(ctx context.Context) ([]domain.Prov
 		return nil, malformedResponse(errors.New("models data is missing"), response.Header)
 	}
 	var data []struct {
-		ID string `json:"id"`
+		ID            string `json:"id"`
+		ContextLength *int   `json:"context_length"`
+		Architecture  struct {
+			InputModalities  []string `json:"input_modalities"`
+			OutputModalities []string `json:"output_modalities"`
+		} `json:"architecture"`
+		SupportedParameters []string `json:"supported_parameters"`
+		Pricing             struct {
+			Prompt            *string `json:"prompt"`
+			Completion        *string `json:"completion"`
+			InternalReasoning *string `json:"internal_reasoning"`
+			CacheRead         *string `json:"cache_read"`
+		} `json:"pricing"`
 	}
 	if err := json.Unmarshal(payload.Data, &data); err != nil {
 		return nil, malformedResponse(err, response.Header)
@@ -233,9 +260,55 @@ func (p OpenAICompatibleProvider) ListModels(ctx context.Context) ([]domain.Prov
 		if model.ID == "" {
 			return nil, malformedResponse(errors.New("model id is missing"), response.Header)
 		}
-		models[i] = domain.ProviderModel{ID: model.ID}
+		capabilities := domain.ModelCapabilities{ToolCalling: contains(model.SupportedParameters, "tools"), JSONOutput: contains(model.SupportedParameters, "response_format"), Vision: contains(model.Architecture.InputModalities, "image")}
+		metadata, err := json.Marshal(struct {
+			InputModalities  []string `json:"input_modalities,omitempty"`
+			OutputModalities []string `json:"output_modalities,omitempty"`
+		}{model.Architecture.InputModalities, model.Architecture.OutputModalities})
+		if err != nil {
+			return nil, err
+		}
+		price := openRouterPrice(model.Pricing.Prompt, model.Pricing.Completion, model.Pricing.InternalReasoning, model.Pricing.CacheRead)
+		models[i] = domain.ProviderModel{ID: model.ID, ContextWindow: model.ContextLength, Capabilities: capabilities, IsFree: isFree(price), Price: price, SourceMetadata: string(metadata)}
 	}
 	return models, nil
+}
+
+func openRouterPrice(prompt, completion, reasoning, cacheRead *string) *domain.ModelPrice {
+	input, inputOK := perMillion(prompt)
+	output, outputOK := perMillion(completion)
+	if !inputOK && !outputOK {
+		return nil
+	}
+	price := &domain.ModelPrice{InputPerMillion: input, OutputPerMillion: output, Source: "provider_sync"}
+	price.ReasoningPerMillion, _ = perMillion(reasoning)
+	price.CachedInputPerMillion, _ = perMillion(cacheRead)
+	return price
+}
+
+func perMillion(value *string) (*float64, bool) {
+	if value == nil || *value == "" {
+		return nil, false
+	}
+	parsed, err := strconv.ParseFloat(*value, 64)
+	if err != nil {
+		return nil, false
+	}
+	parsed *= 1_000_000
+	return &parsed, true
+}
+
+func isFree(price *domain.ModelPrice) bool {
+	return price != nil && price.InputPerMillion != nil && price.OutputPerMillion != nil && *price.InputPerMillion == 0 && *price.OutputPerMillion == 0
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
 
 func (p OpenAICompatibleProvider) Health(ctx context.Context) (domain.ProviderHealth, error) {

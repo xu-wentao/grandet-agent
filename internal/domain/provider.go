@@ -30,10 +30,6 @@ func (e *ProviderError) Error() string {
 	return fmt.Sprintf("provider %s (request %s): %s", e.Kind, e.RequestID, e.Detail)
 }
 
-type ProviderModel struct {
-	ID string
-}
-
 type ChatMessage struct {
 	Role    string
 	Content string

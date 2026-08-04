@@ -152,6 +152,22 @@ func TestOpenAICompatibleProviderHealthDoesNotGenerate(t *testing.T) {
 	}
 }
 
+func TestOpenAICompatibleProviderNormalizesModelMetadata(t *testing.T) {
+	provider := testOpenAIProvider(t, func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/models" {
+			t.Fatalf("path = %q", request.URL.Path)
+		}
+		_, _ = writer.Write([]byte(`{"data":[{"id":"demo","context_length":8192,"architecture":{"input_modalities":["text","image"]},"supported_parameters":["tools","response_format"],"pricing":{"prompt":"0.000001","completion":"0.000002","internal_reasoning":"0.000003","cache_read":"0.0000001"}}]}`))
+	})
+	models, err := provider.ListModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 1 || models[0].ContextWindow == nil || *models[0].ContextWindow != 8192 || !models[0].Capabilities.ToolCalling || !models[0].Capabilities.JSONOutput || !models[0].Capabilities.Vision || models[0].Price == nil || models[0].Price.InputPerMillion == nil || *models[0].Price.InputPerMillion != 1 || models[0].Price.OutputPerMillion == nil || *models[0].Price.OutputPerMillion != 2 {
+		t.Fatalf("models = %#v", models)
+	}
+}
+
 func TestProviderConfigFileLoadsAndValidates(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "providers.yaml")
 	if err := os.WriteFile(path, []byte("schema_version: 1\nproviders:\n  local:\n    type: openai_compatible\n    base_url: http://localhost:4000/v1\n    enabled: true\n"), 0o600); err != nil {
