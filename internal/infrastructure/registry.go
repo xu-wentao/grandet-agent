@@ -134,11 +134,13 @@ func (r SQLiteRegistry) Sync(ctx context.Context, provider application.ProviderC
 	if err != nil {
 		return err
 	}
+	seen := make(map[string]struct{}, len(models))
 	for _, model := range models {
 		if model.ID == "" {
 			tx.Rollback()
 			return fmt.Errorf("provider %q returned a model without an id", provider.Name)
 		}
+		seen[model.ID] = struct{}{}
 		capabilities, err := json.Marshal(model.Capabilities)
 		if err != nil {
 			tx.Rollback()
@@ -154,7 +156,45 @@ func (r SQLiteRegistry) Sync(ctx context.Context, provider application.ProviderC
 			return err
 		}
 	}
+	if err := r.markMissingProviderModels(ctx, tx, provider.Name, seen); err != nil {
+		tx.Rollback()
+		return err
+	}
 	return tx.Commit()
+}
+
+func (r SQLiteRegistry) markMissingProviderModels(ctx context.Context, tx *sql.Tx, providerID string, seen map[string]struct{}) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id, upstream_model_name FROM models WHERE provider_id = ? AND source = 'provider_sync'`, providerID)
+	if err != nil {
+		return err
+	}
+	var missing []string
+	for rows.Next() {
+		var id, upstreamName string
+		if err := rows.Scan(&id, &upstreamName); err != nil {
+			rows.Close()
+			return err
+		}
+		if _, ok := seen[upstreamName]; !ok {
+			missing = append(missing, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	for _, id := range missing {
+		if _, err := tx.ExecContext(ctx, `UPDATE models SET enabled = 0, lifecycle_state = 'UNAVAILABLE', updated_at = ? WHERE id = ?`, r.now(), id); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE model_prices SET effective_to = ? WHERE model_id = ? AND effective_to IS NULL`, r.now(), id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (r SQLiteRegistry) recordPrice(ctx context.Context, tx *sql.Tx, providerID, upstreamName string, price *domain.ModelPrice) error {

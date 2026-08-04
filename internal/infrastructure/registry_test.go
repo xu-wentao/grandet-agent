@@ -112,3 +112,67 @@ execution_profiles:
 		t.Fatalf("manual model override was erased: %#v, %v", models, err)
 	}
 }
+
+func TestRegistrySyncMarksOmittedProviderModelsUnavailable(t *testing.T) {
+	clock := &registryClock{now: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)}
+	path := filepath.Join(t.TempDir(), "grandet.db")
+	if err := NewSQLiteMigrator(clock).Migrate(path); err != nil {
+		t.Fatal(err)
+	}
+	registry := NewSQLiteRegistry(path, clock)
+	config := application.ProviderConfig{Name: "local", Type: "openai_compatible", BaseURL: "https://example.test/v1", Enabled: true}
+	if err := registry.UpsertProviders(context.Background(), []application.ProviderConfig{config}); err != nil {
+		t.Fatal(err)
+	}
+	price := func(value float64) *float64 { return &value }
+	if err := registry.Sync(context.Background(), config, []domain.ProviderModel{{ID: "gone", Price: &domain.ModelPrice{InputPerMillion: price(1), OutputPerMillion: price(2), Source: "provider_sync"}}}); err != nil {
+		t.Fatal(err)
+	}
+	modelsPath := filepath.Join(filepath.Dir(path), "models.yaml")
+	if err := os.WriteFile(modelsPath, []byte(`models:
+  - id: local/manual-only
+    provider: local
+    upstream_name: manual-only
+    enabled: true
+    is_free: true
+    lifecycle_state: ACTIVE
+execution_profiles:
+  - id: gone-profile
+    model: local/gone
+    enabled: true
+  - id: manual-profile
+    model: local/manual-only
+    enabled: true
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.ImportManualProfiles(context.Background(), modelsPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.SetModelState(context.Background(), "local/gone", "ACTIVE"); err != nil {
+		t.Fatal(err)
+	}
+	if profiles, err := registry.EligibleExecutionProfiles(context.Background(), false); err != nil || len(profiles) != 2 {
+		t.Fatalf("eligible profiles before omission = %#v, %v", profiles, err)
+	}
+
+	clock.now = clock.now.Add(time.Hour)
+	if err := registry.Sync(context.Background(), config, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	models, err := registry.ListModels(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(models) != 2 || models[0].ID != "local/gone" || models[0].Enabled || models[0].LifecycleState != "UNAVAILABLE" || models[0].PriceKnown {
+		t.Fatalf("omitted provider model = %#v", models)
+	}
+	if models[1].ID != "local/manual-only" || !models[1].Enabled || models[1].LifecycleState != "ACTIVE" {
+		t.Fatalf("manual-only model = %#v", models)
+	}
+	profiles, err := registry.EligibleExecutionProfiles(context.Background(), false)
+	if err != nil || len(profiles) != 1 || profiles[0].ID != "manual-profile" {
+		t.Fatalf("eligible profiles after omission = %#v, %v", profiles, err)
+	}
+}
